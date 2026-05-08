@@ -1,0 +1,32 @@
+# macOS
+.DS_Store
+
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+build/
+dist/
+.eggs/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Streamlit cache
+.streamlit/secrets.toml
+
+# Application data (SQLite DB + generated artefacts)
+data/
+artifacts/
+
+# IDE
+.idea/
+.vscode/
+
+# Test/coverage
+.pytest_cache/
+.coverage
+htmlcov/

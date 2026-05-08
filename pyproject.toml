@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "wavetest-app"
+version = "0.1.0"
+description = "Streamlit GUI for the waveImpact Responsible AI Toolchain"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [{ name = "waveImpact GmbH" }]
+license = { text = "Proprietary" }
+
+dependencies = [
+    "streamlit>=1.32",
+    "sqlalchemy>=2.0",
+    "alembic>=1.13",
+    "pandas>=2.0",
+    "matplotlib>=3.7",
+
+    # waveTest toolchain — install editable from sibling checkout via
+    # scripts/install_toolchain.sh (see README). Listed here as documentation.
+    # "wavetest_fairness", "wavetest_explain", "wavetest_dataquality",
+    # "wavetest_logging", "wavetest_monitoring", "wavetest_report",
+]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
