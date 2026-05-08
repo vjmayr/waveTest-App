@@ -14,7 +14,9 @@ import streamlit as st
 from wavetest_fairness import FairnessVisualizer, generate_demo_data
 
 from wavetest_app.adapters.fairness import make_fairness_assessment
-from wavetest_app.ui import page_header, project_picker, risk_pill, show_recommendations
+from wavetest_app.ui import (
+    csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
+)
 
 st.set_page_config(
     page_title="Bias Detection · waveTest",
@@ -46,9 +48,10 @@ with st.expander("⚙️ Configure", expanded=True):
         st.markdown("**Data source**")
         source = st.radio(
             "Choose data",
-            ["Demo data (synthetic)", "Project CSV"],
+            ["Demo data (synthetic)", "Upload CSV"],
             horizontal=True, key="bias_source",
         )
+        uploaded_df = None
         if source == "Demo data (synthetic)":
             bias_level = st.selectbox(
                 "Demo bias level",
@@ -58,13 +61,14 @@ with st.expander("⚙️ Configure", expanded=True):
                 "Sample count", 100, 50_000, 2000, 500, key="bias_n",
             )
         else:
-            data_file = st.text_input(
-                "CSV filename (in project's data/ folder)",
-                value="model_predictions.csv", key="bias_csv",
-            )
-            st.caption(
-                "CSV must contain `y_true`, `y_pred`, and the columns named in "
-                "the privileged groups dict below."
+            uploaded_df = csv_uploader(
+                "Drop a CSV with predictions",
+                key="bias_upload",
+                required_columns=["y_true", "y_pred"],
+                help=(
+                    "Required columns: `y_true`, `y_pred`. Plus one column for each "
+                    "key in the privileged-groups JSON below."
+                ),
             )
 
     with c2:
@@ -96,18 +100,26 @@ if st.button("▶ Run assessment", type="primary", key="bias_run"):
         st.error(f"Privileged groups JSON is invalid: {exc}")
         st.stop()
 
+    if source != "Demo data (synthetic)" and uploaded_df is None:
+        st.error("Upload a CSV first or switch to demo data.")
+        st.stop()
+
     with st.spinner("Running assessment…"):
         if source == "Demo data (synthetic)":
             y_true, y_pred, sensitive_features, _full = generate_demo_data(
                 n_samples=int(n_samples), bias_level=bias_level,
             )
         else:
-            import pandas as pd
-            from wavetest_fairness import DataLoader
-            df = DataLoader().load(data_file)
-            y_true = df["y_true"]
-            y_pred = df["y_pred"]
-            sensitive_features = df[list(privileged_groups.keys())]
+            missing = [c for c in privileged_groups if c not in uploaded_df.columns]
+            if missing:
+                st.error(
+                    f"Privileged-groups columns missing from CSV: {missing}\n\n"
+                    f"CSV columns: {list(uploaded_df.columns)}"
+                )
+                st.stop()
+            y_true = uploaded_df["y_true"]
+            y_pred = uploaded_df["y_pred"]
+            sensitive_features = uploaded_df[list(privileged_groups.keys())]
 
         assessment = make_fairness_assessment(
             project_id=project.project_id,

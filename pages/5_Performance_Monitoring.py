@@ -17,7 +17,9 @@ from wavetest_monitoring import (
 )
 
 from wavetest_app.adapters.monitoring import make_monitoring_assessment
-from wavetest_app.ui import page_header, project_picker, risk_pill, show_recommendations
+from wavetest_app.ui import (
+    csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
+)
 
 st.set_page_config(
     page_title="Performance Monitoring · waveTest",
@@ -90,14 +92,32 @@ with st.expander("⚙️ Configure", expanded=True):
             index=2, key="mn_dep",
         )
         st.markdown("---")
-        st.caption("Real CSV upload is a future feature; demo data simulates drift.")
-        drift_level = st.selectbox(
-            "Demo drift level", ["none", "moderate", "high"], index=1,
-            key="mn_dl",
+        source = st.radio(
+            "Data source",
+            ["Demo data (synthetic)", "Upload CSV"],
+            horizontal=True, key="mn_src",
         )
-        n_samples = st.number_input(
-            "Demo samples", 100, 10_000, 1000, 100, key="mn_n",
-        )
+        uploaded_df = None
+        if source == "Demo data (synthetic)":
+            drift_level = st.selectbox(
+                "Demo drift level", ["none", "moderate", "high"], index=1,
+                key="mn_dl",
+            )
+            n_samples = st.number_input(
+                "Demo samples", 100, 10_000, 1000, 100, key="mn_n",
+            )
+        else:
+            uploaded_df = csv_uploader(
+                "Drop a CSV with monitoring data",
+                key="mn_upload",
+                required_columns=["timestamp", "y_true", "y_pred"],
+                parse_dates=["timestamp"],
+                help=(
+                    "Required columns: `timestamp`, `y_true`, `y_pred`. "
+                    "Optional: `confidence`. Any other numeric / categorical "
+                    "columns will be analysed for drift and outliers."
+                ),
+            )
 
 # ---------------------------------------------------------------------------
 # Run
@@ -117,10 +137,17 @@ if st.button("▶ Run assessment", type="primary", key="mn_run"):
         task_type=task_type, high_risk=high_risk, deployment=deployment,
     )
 
-    with st.spinner("Generating data and running assessment…"):
-        df = generate_demo_monitoring_data(
-            n_samples=int(n_samples), drift_level=drift_level,
-        )
+    if source != "Demo data (synthetic)" and uploaded_df is None:
+        st.error("Upload a CSV first or switch to demo data.")
+        st.stop()
+
+    with st.spinner("Running assessment…"):
+        if source == "Demo data (synthetic)":
+            df = generate_demo_monitoring_data(
+                n_samples=int(n_samples), drift_level=drift_level,
+            )
+        else:
+            df = uploaded_df
         assessment = make_monitoring_assessment(
             project_id=project.project_id,
             config=cfg, system_profile=profile,

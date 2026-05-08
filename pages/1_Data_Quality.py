@@ -18,7 +18,9 @@ from wavetest_dataquality import (
 )
 
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
-from wavetest_app.ui import page_header, project_picker, risk_pill, show_recommendations
+from wavetest_app.ui import (
+    csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
+)
 
 st.set_page_config(
     page_title="Data Quality · waveTest",
@@ -64,10 +66,11 @@ with st.expander("⚙️ Configure", expanded=True):
         st.markdown("**Data source**")
         source = st.radio(
             "Choose data",
-            ["Demo data (synthetic)", "Project CSV"],
+            ["Demo data (synthetic)", "Upload CSV"],
             horizontal=True,
             help="Demo data is generated with controllable quality issues.",
         )
+        uploaded_df = None
         if source == "Demo data (synthetic)":
             quality_level = st.selectbox(
                 "Demo quality level",
@@ -77,9 +80,15 @@ with st.expander("⚙️ Configure", expanded=True):
                 "Sample count", 100, 50_000, 5000, 500,
             )
         else:
-            data_file = st.text_input(
-                "CSV filename (in project's data/ folder)",
-                value="training_data.csv",
+            uploaded_df = csv_uploader(
+                "Drop a CSV with the dataset to assess",
+                key="dq_upload",
+                help=(
+                    "Any tabular CSV. Columns named in the target population JSON below "
+                    "will be tested for representativeness; columns whose names match "
+                    "GDPR Art. 9 keywords (race, health, religion, …) are flagged "
+                    "automatically."
+                ),
             )
 
     st.markdown("**Target population (chi-square representativeness)**")
@@ -114,14 +123,17 @@ if run_clicked:
         min_sample_size=int(min_sample_size),
     )
 
+    if source != "Demo data (synthetic)" and uploaded_df is None:
+        st.error("Upload a CSV first or switch to demo data.")
+        st.stop()
+
     with st.spinner("Running assessment…"):
         if source == "Demo data (synthetic)":
             df = generate_demo_data(
                 n_samples=int(n_samples), quality_level=quality_level,
             )
         else:
-            from wavetest_dataquality import DataLoader
-            df = DataLoader().load(data_file)
+            df = uploaded_df
 
         assessment = make_dataquality_assessment(
             project_id=project.project_id,
