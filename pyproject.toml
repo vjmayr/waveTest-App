@@ -17,6 +17,7 @@ dependencies = [
     "alembic>=1.13",
     "pandas>=2.0",
     "matplotlib>=3.7",
+    "reportlab>=4.0",  # PDF backend for the combined report (no system deps)
 
     # waveTest toolchain — install editable from sibling checkout via
     # scripts/install_toolchain.sh (see README). Listed here as documentation.
