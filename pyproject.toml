@@ -23,6 +23,11 @@ dependencies = [
     "PyYAML>=6",                     # auth/users.yaml parsing
     "codecarbon>=3.0",               # carbon footprint estimation + 213-country intensity table
     "lime>=0.2",                     # complementary local explanations alongside SHAP
+    "great-expectations>=1.0",       # data-quality expectation suites (notebook 04)
+    "ydata-profiling>=4.6",          # automatic dataset profile HTML report (notebook 04)
+    "setuptools<81",                 # ydata-profiling depends on `pkg_resources`
+                                     # which setuptools 81+ removed; pin until
+                                     # ydata-profiling drops the legacy import.
 
     # waveTest toolchain — install editable from sibling checkout via
     # scripts/install_toolchain.sh (see README). Listed here as documentation.

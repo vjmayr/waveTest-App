@@ -253,6 +253,148 @@ if "dq_results" in st.session_state:
     st.markdown("#### Recommendations")
     show_recommendations(assessment.build_recommendations(results))
 
+    # ---------------------------------------------------------------------
+    # ydata-profiling — full automatic dataset profile (notebook 04 uses
+    # this as the deep-dive companion to the lightweight metrics above).
+    # ---------------------------------------------------------------------
+    with st.expander("📋 Extended profile (ydata-profiling)", expanded=False):
+        st.caption(
+            "Generates a full automatic profile of the dataset — column "
+            "types, distributions, correlations, alerts. Slow on large "
+            "frames; use the sample size below to control runtime."
+        )
+        n_rows = len(df)
+        sample_n = st.number_input(
+            "Sample size (rows)",
+            min_value=100, max_value=int(n_rows),
+            value=min(2000, n_rows), step=500, key="dq_yd_n",
+            help="Profiling samples this many rows for the deep dive. "
+                 "The full dataset is still used for the assessment metrics above.",
+        )
+        if st.button(
+            "Run ydata-profiling", key="dq_yd_run",
+        ):
+            with st.spinner("Profiling dataset…"):
+                try:
+                    from ydata_profiling import ProfileReport
+                    sample = df.sample(int(sample_n), random_state=0) \
+                              if n_rows > sample_n else df
+                    report = ProfileReport(
+                        sample,
+                        title=f"Profile · {project.project_id}",
+                        explorative=True,
+                        progress_bar=False,
+                    )
+                    html = report.to_html()
+                    st.session_state["dq_yd_html"] = html
+                except Exception as exc:
+                    st.error(
+                        f"ydata-profiling failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+        if "dq_yd_html" in st.session_state:
+            st.download_button(
+                "⬇ Download profile (HTML)",
+                data=st.session_state["dq_yd_html"],
+                file_name=f"profile_{project.project_id}.html",
+                mime="text/html",
+                key="dq_yd_dl",
+            )
+
+    # ---------------------------------------------------------------------
+    # Great Expectations — programmable validation suite. Mirrors notebook 04.
+    # We seed a small canned suite (no nulls in protected attributes,
+    # numeric columns within plausible ranges) so the analyst sees the
+    # shape of the output; they can extend the YAML on the toolchain side
+    # for project-specific expectations.
+    # ---------------------------------------------------------------------
+    with st.expander("✅ Great Expectations validation", expanded=False):
+        st.caption(
+            "Runs a small canned expectation suite against the dataset. "
+            "For a full project-specific suite, define expectations on "
+            "the toolchain side and import them here."
+        )
+        if st.button("Run expectation suite", key="dq_ge_run"):
+            with st.spinner("Validating expectations…"):
+                try:
+                    import great_expectations as gx
+
+                    context = gx.get_context(mode="ephemeral")
+                    data_source = context.data_sources.add_pandas("pandas_ds")
+                    asset = data_source.add_dataframe_asset(name="dq_asset")
+                    batch_def = asset.add_batch_definition_whole_dataframe(
+                        "whole_df"
+                    )
+                    batch = batch_def.get_batch(
+                        batch_parameters={"dataframe": df},
+                    )
+                    expectations: list = []
+                    # Expect non-null on every column observed (canned)
+                    for col in df.columns:
+                        e = gx.expectations.ExpectColumnValuesToNotBeNull(
+                            column=col, mostly=0.95,
+                        )
+                        expectations.append(e)
+                    # Numeric-range expectation on numeric columns
+                    for col in df.select_dtypes(include="number").columns:
+                        lo = float(df[col].min())
+                        hi = float(df[col].max())
+                        e = gx.expectations.ExpectColumnValuesToBeBetween(
+                            column=col, min_value=lo, max_value=hi,
+                        )
+                        expectations.append(e)
+
+                    suite = gx.ExpectationSuite(name="canned_dq_suite")
+                    for e in expectations:
+                        suite.add_expectation(e)
+                    # GE 1.x requires the suite + validation definition to
+                    # be registered with the context before .run() is allowed.
+                    context.suites.add(suite)
+                    validation_def = gx.ValidationDefinition(
+                        data=batch_def, suite=suite, name="dq_validation",
+                    )
+                    context.validation_definitions.add(validation_def)
+                    result = validation_def.run(
+                        batch_parameters={"dataframe": df},
+                    )
+                    st.session_state["dq_ge_result"] = {
+                        "success": result.success,
+                        "stats": result.statistics,
+                        "results": [
+                            {
+                                "expectation": str(
+                                    r.expectation_config.type
+                                ),
+                                "column": r.expectation_config.kwargs.get(
+                                    "column", "—"
+                                ),
+                                "success": r.success,
+                            }
+                            for r in result.results
+                        ],
+                    }
+                except Exception as exc:
+                    st.error(
+                        f"Great Expectations validation failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+        if "dq_ge_result" in st.session_state:
+            ge = st.session_state["dq_ge_result"]
+            n_pass = sum(1 for r in ge["results"] if r["success"])
+            n_total = len(ge["results"])
+            color = "ok" if ge["success"] else "warning"
+            st.markdown(
+                risk_pill(
+                    "GE Suite",
+                    f"{n_pass}/{n_total} passed",
+                    color,
+                ),
+                unsafe_allow_html=True,
+            )
+            st.dataframe(
+                ge["results"], hide_index=True, use_container_width=True,
+            )
+
     # Downloads
     st.markdown("#### Exports")
     cols = st.columns(len(report_paths))
