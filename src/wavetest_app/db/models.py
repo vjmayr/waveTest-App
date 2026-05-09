@@ -426,3 +426,72 @@ class SustainabilityRecord(Base):
             f"<SustainabilityRecord {self.record_id} {self.project_id} "
             f"{self.deployment_region!r}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Incident report — Art. 73 serious-incident reporting
+# ---------------------------------------------------------------------------
+class IncidentReport(Base):
+    """One incident reported under Art. 73.
+
+    FK is SET NULL on project delete (incidents outlive engagements);
+    project / client name are snapshotted so the report stays readable.
+    """
+
+    __tablename__ = "incident_reports"
+
+    incident_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    project_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(255), default="")
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    summary: Mapped[str] = mapped_column(Text, default="")
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    # death_or_serious_health / fundamental_rights / property_damage / near_miss
+    severity: Mapped[str] = mapped_column(String(32), default="near_miss")
+    affected_persons: Mapped[int] = mapped_column(default=0)
+
+    date_occurred: Mapped[Optional[date]] = mapped_column(Date)
+    date_detected: Mapped[Optional[date]] = mapped_column(Date)
+    date_reported: Mapped[Optional[date]] = mapped_column(Date)
+
+    root_cause: Mapped[str] = mapped_column(Text, default="")
+    corrective_action: Mapped[str] = mapped_column(Text, default="")
+
+    # open / investigating / corrective_actions / closed
+    status: Mapped[str] = mapped_column(String(32), default="open")
+
+    authority_notified: Mapped[bool] = mapped_column(Boolean, default=False)
+    authority_name: Mapped[str] = mapped_column(String(255), default="")
+    authority_reference: Mapped[str] = mapped_column(String(128), default="")
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    project: Mapped[Optional[Project]] = relationship()
+
+    __table_args__ = (
+        Index("ix_incident_reports_project_id", "project_id"),
+        Index("ix_incident_reports_status", "status"),
+        Index("ix_incident_reports_severity", "severity"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<IncidentReport {self.incident_id} "
+            f"[{self.severity}] {self.status}>"
+        )

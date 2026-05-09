@@ -185,6 +185,18 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ### Recently closed
 
+- **Incident reporting (Art. 73)** — new `incident_reports` table
+  (Alembic `2670783b7954`), FK SET NULL + name snapshots so reports
+  outlive engagements (audit-log pattern). Severity table encodes
+  Art. 73 deadlines (2 days for death/serious health, 15 days
+  otherwise); the page computes per-incident deadline pills with
+  ok/warning/critical based on days-remaining. Page
+  `pages/15_Incidents.py` lists incidents per project with create +
+  in-line edit (status, root cause, corrective action, authority
+  notification). `wavetest_app.incidents.to_markdown(...)` produces
+  a notified-body packet downloadable per incident. 10 new pytest
+  tests covering deadline arithmetic + persistence + FK SET NULL +
+  Markdown rendering.
 - **Sustainability v0 (voluntary)** — new `sustainability_records`
   table (Alembic `f1125584fa19`), unique on `project_id` + CASCADE
   delete with the project. Inputs: training kWh + optional override,

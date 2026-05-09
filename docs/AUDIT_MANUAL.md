@@ -26,6 +26,7 @@ requirements, example CSVs, and how to read the results.
    - [4.7 Human Oversight](#47-human-oversight--art-14)
    - [4.8 Cybersecurity](#48-cybersecurity--art-155)
    - [4.9 Sustainability](#49-sustainability--voluntary)
+   - [4.10 Incidents](#410-incidents--art-73)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -623,6 +624,58 @@ Get the order of magnitude right first; refine over time.
 
 ---
 
+### 4.10 Incidents — Art. 73
+
+**What it does:** Tracks serious incidents per project. Each entry
+captures dates (occurred / detected / reported), severity, affected
+persons, root cause, corrective action, and authority-notification
+metadata. Generates a Markdown packet ready for the notified body.
+
+**Reporting deadlines per Art. 73:**
+
+| Severity | Deadline |
+| --- | --- |
+| Death or serious health harm | **2 days** from awareness |
+| Fundamental rights infringement | 15 days |
+| Property / environmental damage | 15 days |
+| Near-miss (no harm) | 15 days |
+
+The page computes a **deadline pill** per incident from
+`detected → reported`:
+
+- **green** — already reported
+- **green** if days remaining > 3
+- **yellow** if 0–3 days remaining
+- **red** if overdue (negative days)
+
+**Workflow:**
+
+1. Open **➕ Log a new incident** — title, summary, severity, affected
+   persons, occurred / detected dates, initial status.
+2. Once an incident exists, expand it to record:
+   - **Root cause** + **corrective action** (text)
+   - **Status** transitions: `open` → `investigating` →
+     `corrective_actions` → `closed`
+   - **Date reported** to the authority
+   - **Authority name** + **case reference**
+3. Click **⬇ Notified-body packet** to download a Markdown report bundle
+   for filing.
+
+**Tip:** the authority you report to is the *market-surveillance
+authority of the Member State where the incident occurred* — not
+necessarily the client's home regulator. Confirm with the client's
+compliance team. Common ones: **BNetzA** (Germany), **AGCM** (Italy),
+**ACPR/CNIL** (France), **AP** (Netherlands).
+
+**Interplay with the Audit Log:** every create / update writes an entry
+under module `incidents`, so admins can audit what changed and when.
+
+**Persistence note:** if a project is later deleted, its incidents are
+*not* lost — the FK is set to NULL but the project + client name
+snapshots survive. The same pattern as the Audit Log.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -712,6 +765,7 @@ Numeric / enum status labels you'll see, by module:
 | Human Oversight | Compliance percent `0–100%` (Art. 14.4 checkpoint score) |
 | Cybersecurity | Compliance percent `0–100%` (Art. 15(5) checkpoint score) |
 | Sustainability | Annual `kg CO₂eq` (informational, no threshold) |
+| Incidents | `LOGGED INCxxxx` / `UPDATED INCxxxx` (severity-coloured) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---
