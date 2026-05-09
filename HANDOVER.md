@@ -185,6 +185,15 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ### Recently closed
 
+- **Cybersecurity questionnaire v0 (Art. 15(5))** — new
+  `cybersecurity_plans` table (Alembic `f0879a4682d7`), unique on
+  `project_id` + CASCADE delete with the project. Eight yes/partial/no
+  checkpoints: threat model, SBOM, pentest, data-poisoning, adversarial
+  inputs, privacy attacks, access controls, incident response. Page
+  `pages/13_Cybersecurity.py` mirrors the Human Oversight pattern.
+  Active ART-based adversarial testing is a tracked follow-up — wrap
+  Adversarial Robustness Toolbox (FGSM/PGD/membership-inference) for
+  uploaded models. ~3 days when picked up. 7 new pytest tests.
 - **Human Oversight (Art. 14)** — new `oversight_plans` table (Alembic
   `3a6027e32dfc`), unique constraint on `project_id` so each project has
   one editable plan. Six Art. 14.4 (a)–(e) yes/partial/no checkpoints

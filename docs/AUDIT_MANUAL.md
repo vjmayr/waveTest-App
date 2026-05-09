@@ -24,6 +24,7 @@ requirements, example CSVs, and how to read the results.
    - [4.5 Performance Monitoring](#45-performance-monitoring--art-15--72)
    - [4.6 Risk Register](#46-risk-register--art-9)
    - [4.7 Human Oversight](#47-human-oversight--art-14)
+   - [4.8 Cybersecurity](#48-cybersecurity--art-155)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -546,6 +547,41 @@ checkpoint is a candidate **risk** to record on page 11 with category
 
 ---
 
+### 4.8 Cybersecurity — Art. 15(5)
+
+**What it does:** Records the project's cybersecurity posture against
+the eight Art. 15(5) checkpoints — both classical infosec hygiene and
+AI-specific attacks. Generates a Markdown deliverable.
+
+**Why it's a v0:** Real adversarial-robustness testing (FGSM, PGD,
+membership-inference, model-inversion against an actual uploaded model)
+needs the Adversarial Robustness Toolbox (ART) and a few days of
+wrapping. This page is the questionnaire-driven precursor — it captures
+what the team *has done* and *plans to do* against each Art. 15(5)
+threat class. The active-testing module is a tracked follow-up.
+
+**The eight checkpoints:**
+
+1. Threat model is documented and current
+2. SBOM maintained + scanned for CVEs
+3. Penetration testing performed in the last 12 months
+4. Training-data integrity controls (against data poisoning)
+5. Inference-time adversarial-input defences (against evasion)
+6. Defences against membership-inference / model-inversion
+7. Access controls documented (deploy / retrain / serve)
+8. Incident-response playbook for compromise
+
+**Scoring:** same yes/partial/no → 3/1/0 → `÷ 24 → percent` as the
+oversight page. 100% = ok, 50–99% = warning, <50% = critical.
+
+**Tip:** the questions about training-data integrity, adversarial inputs,
+and privacy attacks are AI-specific and often surface unfamiliar to a
+generic infosec team. Bring those up in the threat-model conversation
+explicitly — they're what the EU AI Act adds beyond standard ISO 27001
+hygiene.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -633,6 +669,7 @@ Numeric / enum status labels you'll see, by module:
 | Monitoring | `GOOD`, `WARNING`, `CRITICAL` |
 | Risk Register | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (severity × likelihood) |
 | Human Oversight | Compliance percent `0–100%` (Art. 14.4 checkpoint score) |
+| Cybersecurity | Compliance percent `0–100%` (Art. 15(5) checkpoint score) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---

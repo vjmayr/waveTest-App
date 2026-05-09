@@ -309,3 +309,62 @@ class OversightPlan(Base):
             f"<OversightPlan {self.plan_id} {self.project_id} "
             f"{self.compliance_percent:.0f}%>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Cybersecurity plan — Art. 15(5) cybersecurity slice
+# ---------------------------------------------------------------------------
+class CybersecurityPlan(Base):
+    """Cybersecurity questionnaire + plan per project — Art. 15(5).
+
+    Article 15(5) requires high-risk AI systems to be resilient against
+    attacks that try to alter use, outputs, or performance. This is the
+    v0 questionnaire — eight yes / partial / no checkpoints covering
+    classical infosec hygiene plus AI-specific attack vectors. A future
+    iteration can wrap ART (Adversarial Robustness Toolbox) for active
+    testing.
+    """
+
+    __tablename__ = "cybersecurity_plans"
+
+    plan_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+
+    # Eight yes/partial/no checkpoints
+    threat_model_documented: Mapped[str] = mapped_column(String(8), default="no")
+    sbom_maintained: Mapped[str] = mapped_column(String(8), default="no")
+    pentest_performed: Mapped[str] = mapped_column(String(8), default="no")
+    data_poisoning_controls: Mapped[str] = mapped_column(String(8), default="no")
+    adversarial_input_controls: Mapped[str] = mapped_column(String(8), default="no")
+    privacy_attack_controls: Mapped[str] = mapped_column(String(8), default="no")
+    access_controls_documented: Mapped[str] = mapped_column(String(8), default="no")
+    incident_response_playbook: Mapped[str] = mapped_column(String(8), default="no")
+
+    pentest_last_date: Mapped[Optional[date]] = mapped_column(Date)
+    threat_model_notes: Mapped[str] = mapped_column(Text, default="")
+    open_findings: Mapped[str] = mapped_column(Text, default="")
+    mitigation_plan: Mapped[str] = mapped_column(Text, default="")
+    next_review_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    compliance_percent: Mapped[float] = mapped_column(Float, default=0.0)
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    project: Mapped[Project] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<CybersecurityPlan {self.plan_id} {self.project_id} "
+            f"{self.compliance_percent:.0f}%>"
+        )
