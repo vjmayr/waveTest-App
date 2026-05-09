@@ -48,28 +48,19 @@ def get_authenticator() -> stauth.Authenticate:
 def require_login() -> None:
     """Block page execution until the user is logged in.
 
-    Reads the auth cookie (without rendering a form) and falls back to a
-    redirect-to-Home prompt if the cookie is missing or the session is
-    invalidated. On success also drops a "Signed in as …" caption and a
-    logout button into the sidebar so identity is visible from every
-    assessment page.
-
-    Call once near the top of every page that should be behind auth.
-    Home.py is the exception — it renders the login form itself.
+    Cheap session-state check only — does **not** instantiate a second
+    ``Authenticate``. With ``st.navigation`` in Home.py, the entry script
+    runs on every page render and is what creates the cookie manager,
+    populates session state, and renders the sidebar identity + logout.
+    Trying to construct a second ``Authenticate`` here trips Streamlit's
+    "duplicate `init` key" error because each one builds its own
+    ``CookieManager`` widget.
     """
-    authenticator = get_authenticator()
-    authenticator.login(location="unrendered")
-
     if not st.session_state.get("authentication_status"):
         st.warning(
             "🔒 Please log in via the **Home** page to use this assessment."
         )
         st.stop()
-
-    # Identity + logout in the sidebar — consistent across every gated page
-    with st.sidebar:
-        st.caption(f"Signed in as **{st.session_state.get('name', '')}**")
-        authenticator.logout(location="sidebar", key="logout_sidebar")
 
 
 def current_username() -> Optional[str]:
