@@ -3,6 +3,10 @@
 Streamlit GUI for the [waveImpact Responsible AI Toolchain](https://github.com/waveImpactGmbH/RAI-TOOLCHAIN).
 An internal multi-analyst tool that replaces the notebook-based workflow with a browser UI.
 
+> **Analyst quickstart:** see [docs/AUDIT_MANUAL.md](docs/AUDIT_MANUAL.md) for
+> the step-by-step audit workflow, per-module input requirements, example CSVs,
+> and how to read the reports.
+
 ---
 
 ## Architecture
