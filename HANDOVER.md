@@ -154,6 +154,14 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ## Open follow-ups (priority order)
 
+> **`next_id` second-order race.** A Python lock now serialises the
+> read+compute inside `next_id()` (good defense-in-depth) but each
+> caller's SQLAlchemy session establishes its read snapshot **before**
+> the lock fires, so two concurrent submissions can still both see the
+> same max and collide on commit. Proper fix: an ``id_sequences`` table
+> with atomic ``INSERT … ON CONFLICT … RETURNING``. ~1 hour. Until then
+> the user sees an `IntegrityError` if they're unlucky and just retries.
+>
 > **Combined Report audit-failure gap.** The 5 individual assessment pages
 > wrap their run block in `audit_assessment(...)` so a mid-run exception
 > writes a `status="FAILED"` audit entry. The Combined Report does not —

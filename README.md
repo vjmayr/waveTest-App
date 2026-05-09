@@ -132,10 +132,10 @@ alembic stamp head
 **Add a user:**
 
 ```bash
-python scripts/auth_add_user.py
-# or non-interactively:
-python scripts/auth_add_user.py --username jdoe --email jdoe@example.com \
-    --name "John Doe" --password 's3cr3t'
+python scripts/auth_add_user.py                  # interactive
+python scripts/auth_add_user.py \                # non-interactive
+    --username jdoe --email jdoe@example.com \
+    --name "John Doe" --password 's3cr3t' --role admin
 ```
 
 The first run generates a random `cookie.key` and writes the file with mode
@@ -143,6 +143,21 @@ The first run generates a random `cookie.key` and writes the file with mode
 
 Edits to `auth/users.yaml` are picked up on the next page render — no
 Streamlit restart needed.
+
+### Roles
+
+Two roles, declared per-user in the `roles:` list of `auth/users.yaml`:
+
+| Role | Can access |
+| --- | --- |
+| **analyst** | Home + the 6 assessment pages (Combined Report, Data Quality, Bias, Explainability, Logging, Performance Monitoring). |
+| **admin** | Everything analysts can do, plus **Clients**, **Systems**, **Projects**, **Project Types**, and the **Audit Log** viewer. |
+
+The bootstrap script defaults to `--role analyst`. **Create your first user
+with `--role admin`** so you can set up clients and projects. To upgrade an
+existing user, either edit `auth/users.yaml` directly (change `roles: [analyst]`
+to `roles: [admin]`) or run `python scripts/auth_add_user.py --force --role admin
+--username YOU` (this re-prompts for the password).
 
 The authenticated username is automatically captured in the `audit_log.actor`
 column for every assessment run.

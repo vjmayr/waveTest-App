@@ -84,3 +84,42 @@ def current_display_name() -> Optional[str]:
     if not st.session_state.get("authentication_status"):
         return None
     return st.session_state.get("name")
+
+
+def current_user_roles() -> list[str]:
+    """Return the authenticated user's role list, or ``[]`` if not logged in.
+
+    Roles are stored in ``auth/users.yaml`` per user; we re-read the file
+    here (cheap, ~10-user file) so role grants take effect on the next
+    page render without a Streamlit restart.
+    """
+    if not st.session_state.get("authentication_status"):
+        return []
+    username = st.session_state.get("username")
+    if not username or not AUTH_USERS_PATH.exists():
+        return []
+    with AUTH_USERS_PATH.open(encoding="utf-8") as f:
+        cfg = yaml.safe_load(f) or {}
+    user = (
+        cfg.get("credentials", {})
+           .get("usernames", {})
+           .get(username, {})
+    )
+    return list(user.get("roles", []) or [])
+
+
+def require_role(role: str) -> None:
+    """Block page execution unless the authenticated user has ``role``.
+
+    Calls :func:`require_login` first (so the login gate + sidebar widgets
+    still run), then checks the role list. Failure shows a polite error
+    + ``st.stop()`` so the rest of the page doesn't render.
+    """
+    require_login()
+    if role not in current_user_roles():
+        st.error(
+            f"⛔ This page requires the **{role}** role. "
+            "Ask an admin to grant it (edit `auth/users.yaml` or re-run "
+            "`python scripts/auth_add_user.py --force --role admin --username YOU`)."
+        )
+        st.stop()

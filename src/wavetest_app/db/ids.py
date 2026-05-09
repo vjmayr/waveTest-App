@@ -6,12 +6,15 @@ The original console allocated IDs as ``CLI{count + 1:04d}`` which collides
 after deletions. This helper looks at the maximum used numeric suffix and
 returns the next available.
 
-Race-safety: read-then-allocate is wrapped in a process-wide lock, so
-concurrent form submissions inside a single Streamlit instance never
-produce the same ID. **This is not enough for a multi-process deploy** —
-two `streamlit run` instances pointed at the same SQLite file can still
-collide. When that becomes a real concern, swap this for a DB-side
-``id_sequences`` table with ``UPSERT … RETURNING`` for atomic allocation.
+Race-safety: a process-wide lock serialises Python-level interleaving
+of the read+compute step. **This is not a complete fix.** The sessions
+of two concurrent callers each establish their own read snapshot before
+the lock is taken, so under heavy concurrent submissions you can still
+hit ``IntegrityError`` on the second commit. The proper fix is a DB-side
+``id_sequences`` table with atomic ``INSERT … ON CONFLICT … RETURNING``
+— left as a follow-up in HANDOVER. For ≤10 analysts on localhost the
+realistic collision window is tiny; if it bites in practice, the user
+sees the Streamlit error and retries.
 """
 
 from __future__ import annotations

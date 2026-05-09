@@ -16,7 +16,7 @@ import io
 import streamlit as st
 from sqlalchemy import select
 
-from wavetest_app.auth import require_login
+from wavetest_app.auth import require_role
 from wavetest_app.db.models import AuditLog
 from wavetest_app.db.session import get_session
 from wavetest_app.ui import page_header
@@ -25,7 +25,7 @@ st.set_page_config(
     page_title="Audit Log · waveTest", page_icon="📜", layout="wide",
 )
 
-require_login()
+require_role("admin")
 
 page_header(
     "📜 Audit Log",
