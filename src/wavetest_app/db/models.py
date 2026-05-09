@@ -561,3 +561,76 @@ class ExplanationRequest(Base):
             f"<ExplanationRequest {self.request_id} "
             f"{self.subject_reference!r} {self.status}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Model card — Art. 11 technical documentation + Art. 13 transparency
+# ---------------------------------------------------------------------------
+class ModelCard(Base):
+    """One Model Card per project, following Google's published schema.
+
+    Google's `model-card-toolkit` Python package isn't installable on
+    Python 3.13 (its build pins predate 3.x's wheel format), but the
+    underlying schema is the value — we mirror it field-for-field. The
+    generated Markdown + JSON deliverables are interchangeable with
+    output from the official toolkit.
+    """
+
+    __tablename__ = "model_cards"
+
+    card_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+
+    # --- model_details
+    model_name: Mapped[str] = mapped_column(String(255), default="")
+    model_version: Mapped[str] = mapped_column(String(64), default="")
+    model_owners: Mapped[str] = mapped_column(Text, default="")
+    license: Mapped[str] = mapped_column(String(128), default="")
+    citation: Mapped[str] = mapped_column(Text, default="")
+    references: Mapped[str] = mapped_column(Text, default="")
+    overview: Mapped[str] = mapped_column(Text, default="")
+
+    # --- intended_use
+    primary_uses: Mapped[str] = mapped_column(Text, default="")
+    primary_users: Mapped[str] = mapped_column(Text, default="")
+    out_of_scope_uses: Mapped[str] = mapped_column(Text, default="")
+
+    # --- factors
+    relevant_factors: Mapped[str] = mapped_column(Text, default="")
+    evaluation_factors: Mapped[str] = mapped_column(Text, default="")
+
+    # --- metrics (free-text summaries; deeper data lives in assessment runs)
+    performance_metrics: Mapped[str] = mapped_column(Text, default="")
+    decision_thresholds: Mapped[str] = mapped_column(Text, default="")
+
+    # --- data
+    training_data: Mapped[str] = mapped_column(Text, default="")
+    evaluation_data: Mapped[str] = mapped_column(Text, default="")
+
+    # --- ethical_considerations
+    ethical_considerations: Mapped[str] = mapped_column(Text, default="")
+
+    # --- caveats_and_recommendations
+    caveats: Mapped[str] = mapped_column(Text, default="")
+    recommendations: Mapped[str] = mapped_column(Text, default="")
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    project: Mapped[Project] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<ModelCard {self.card_id} {self.project_id} "
+            f"{self.model_name!r} v{self.model_version}>"
+        )

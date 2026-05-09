@@ -234,6 +234,8 @@ nav = st.navigation(
                     title="Incidents",             icon="🚨"),
             st.Page("pages/16_Right_To_Explanation.py",
                     title="Right to Explanation",  icon="📨"),
+            st.Page("pages/17_Model_Card.py",
+                    title="Model Card",            icon="📇"),
         ],
         "Admin": [
             st.Page("pages/6_Clients.py",       title="Clients",       icon="🏢"),
