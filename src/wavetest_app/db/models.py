@@ -188,3 +188,67 @@ class AuditLog(Base):
             f"<AuditLog {self.audit_id} {self.module} {self.status} "
             f"@ {self.run_at:%Y-%m-%d %H:%M}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Risk register — Art. 9 risk management system
+# ---------------------------------------------------------------------------
+class RiskEntry(Base):
+    """One risk recorded against a project for Art. 9 risk management."""
+
+    __tablename__ = "risk_register"
+
+    risk_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+    # Cascade-delete with the project — the risk register is per-engagement
+    project_id: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    title: Mapped[str] = mapped_column(String(255), nullable=False)
+    description: Mapped[str] = mapped_column(Text, default="")
+
+    # data_quality / bias / security / oversight / performance / governance / other
+    category: Mapped[str] = mapped_column(String(32), default="other")
+
+    # Pre-mitigation severity × likelihood
+    severity: Mapped[str] = mapped_column(String(16), default="MEDIUM")
+    likelihood: Mapped[str] = mapped_column(String(16), default="POSSIBLE")
+    risk_level: Mapped[str] = mapped_column(String(16), default="MEDIUM")
+
+    mitigation: Mapped[str] = mapped_column(Text, default="")
+    # proposed / in_progress / implemented / verified
+    mitigation_status: Mapped[str] = mapped_column(String(16), default="proposed")
+
+    # Post-mitigation (residual) — what's left after the mitigation works
+    residual_severity: Mapped[Optional[str]] = mapped_column(String(16))
+    residual_likelihood: Mapped[Optional[str]] = mapped_column(String(16))
+    residual_level: Mapped[Optional[str]] = mapped_column(String(16))
+
+    owner: Mapped[str] = mapped_column(String(128), default="")
+    next_review_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    project: Mapped[Project] = relationship()
+
+    __table_args__ = (
+        Index("ix_risk_register_project_id", "project_id"),
+        Index("ix_risk_register_risk_level", "risk_level"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<RiskEntry {self.risk_id} {self.project_id} "
+            f"{self.title!r} [{self.risk_level}]>"
+        )

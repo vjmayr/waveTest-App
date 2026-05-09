@@ -22,6 +22,7 @@ requirements, example CSVs, and how to read the results.
    - [4.3 Explainability](#43-explainability--art-13)
    - [4.4 Logging Framework](#44-logging-framework--art-12--72)
    - [4.5 Performance Monitoring](#45-performance-monitoring--art-15--72)
+   - [4.6 Risk Register](#46-risk-register--art-9)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -441,6 +442,64 @@ is the early-warning signal you want to surface.
 
 ---
 
+### 4.6 Risk Register — Art. 9
+
+**What it does:** A per-project register of identified risks. Each entry has
+a pre-mitigation severity × likelihood scoring, a mitigation plan + status,
+and a post-mitigation residual scoring. Article 9 of the EU AI Act requires
+this register to be maintained throughout the system's lifecycle.
+
+**What you need from the client:** Conversation, not data. Risks come out of:
+
+- The other assessment outputs (Data Quality, Bias, Explainability, Logging,
+  Monitoring) — convert findings into register entries.
+- A risk workshop with the client's domain experts.
+- Existing internal incident or near-miss reports.
+
+**Workflow on the page:**
+
+1. Pick the project.
+2. Open **➕ Add a risk**, fill in:
+   - **Title** + **Description** (what is the risk?)
+   - **Category**: `data_quality`, `bias`, `security`, `oversight`,
+     `performance`, `governance`, `other`
+   - **Severity** (LOW / MEDIUM / HIGH / CRITICAL) and
+     **Likelihood** (RARE / UNLIKELY / POSSIBLE / LIKELY / ALMOST_CERTAIN)
+   - **Mitigation plan** + status (`proposed` / `in_progress` /
+     `implemented` / `verified`)
+   - **Owner** (person accountable) + **Next review date**
+3. The page computes the **risk level** automatically from the
+   severity × likelihood matrix. Levels: LOW → MEDIUM → HIGH → CRITICAL.
+4. Once mitigation is implemented, expand the risk and fill in the
+   **Residual severity** + **Residual likelihood** to record what's left.
+5. Filter by category / level / status to focus the conversation, and
+   export to **CSV** for the client's compliance file.
+
+**Severity × likelihood matrix:**
+
+| Severity \\ Likelihood | RARE | UNLIKELY | POSSIBLE | LIKELY | ALMOST_CERTAIN |
+| --- | --- | --- | --- | --- | --- |
+| **LOW** | LOW | LOW | LOW | MEDIUM | MEDIUM |
+| **MEDIUM** | LOW | MEDIUM | MEDIUM | HIGH | HIGH |
+| **HIGH** | MEDIUM | HIGH | HIGH | CRITICAL | CRITICAL |
+| **CRITICAL** | HIGH | HIGH | CRITICAL | CRITICAL | CRITICAL |
+
+**How to read the dashboard:**
+
+- **Risks tracked** — total count for the project
+- **Critical / High** — counts at the top two levels (the "must mitigate" ones)
+- **Open mitigations** — entries still in `proposed` or `in_progress`
+- **Risk matrix** — pivot table showing how many risks land in each cell
+
+Every create / update / delete is captured in the **Audit Log** under
+module `risk_management` so the admin can review changes over time.
+
+**Tip:** treat the register as a living document. After every Data Quality
+or Monitoring run, ask "is there a new risk to record, or has an existing
+one changed?" — that's exactly the lifecycle Art. 9 asks for.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -526,6 +585,7 @@ Numeric / enum status labels you'll see, by module:
 | Explainability | Numeric accuracy `92.3%`; compliance `ERFÜLLT` / gap-by-gap |
 | Logging | Compliance percent `0–100%` |
 | Monitoring | `GOOD`, `WARNING`, `CRITICAL` |
+| Risk Register | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (severity × likelihood) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---
