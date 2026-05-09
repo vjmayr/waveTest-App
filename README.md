@@ -23,6 +23,7 @@ audit. Each module produces a customer-deliverable report.
 | Art. 15 | Accuracy & robustness | ✅ Covered (Performance Monitoring for accuracy/drift; Cybersecurity questionnaire for Art. 15(5) — active ART-based testing tracked as a follow-up) |
 | Art. 61 / 72 | Post-market monitoring | 🟡 Partial (Monitoring + Logging — formal incident lifecycle missing) |
 | Art. 11, 16-29, 47, 49, 73, 86 | Governance & lifecycle | ❌ Not yet covered — see [HANDOVER.md](HANDOVER.md) |
+| _voluntary_ | Sustainability (carbon footprint) | ✅ Covered (Sustainability v0 — useful for CSRD / ISO 42001) |
 
 The app is **not** a substitute for full conformity assessment, a quality
 management system, or notified-body interaction. It produces the technical

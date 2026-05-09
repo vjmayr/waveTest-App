@@ -185,6 +185,15 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ### Recently closed
 
+- **Sustainability v0 (voluntary)** — new `sustainability_records`
+  table (Alembic `f1125584fa19`), unique on `project_id` + CASCADE
+  delete with the project. Inputs: training kWh + optional override,
+  inference kWh per 1k, monthly predictions, deployment region with
+  ~16 public 2024 carbon-intensity baselines, editable intensity.
+  Page `pages/14_Sustainability.py` computes training and annual
+  carbon on render; Markdown deliverable export. Not Art-mandated;
+  flagged as voluntary in the README + AUDIT_MANUAL since CSRD /
+  ISO 42001 customers ask for it. 13 new pytest tests.
 - **Cybersecurity questionnaire v0 (Art. 15(5))** — new
   `cybersecurity_plans` table (Alembic `f0879a4682d7`), unique on
   `project_id` + CASCADE delete with the project. Eight yes/partial/no

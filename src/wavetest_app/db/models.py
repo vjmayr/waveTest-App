@@ -368,3 +368,61 @@ class CybersecurityPlan(Base):
             f"<CybersecurityPlan {self.plan_id} {self.project_id} "
             f"{self.compliance_percent:.0f}%>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Sustainability record — voluntary, CSRD-friendly
+# ---------------------------------------------------------------------------
+class SustainabilityRecord(Base):
+    """Per-project carbon footprint estimate. Voluntary, not Art-mandated.
+
+    Stores inputs (training compute, inference energy, deployment region,
+    monthly volume) plus an editable region carbon-intensity factor. The
+    derived totals (training kg, annual kg) are computed on render —
+    cheap and avoids stale-cache risks.
+    """
+
+    __tablename__ = "sustainability_records"
+
+    record_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+
+    # --- Training-time inputs
+    training_compute_kwh: Mapped[Optional[float]] = mapped_column(Float)
+    # If the client has measured the training carbon directly (CodeCarbon /
+    # eco2AI / etc.), they can set the override and skip the kWh × intensity
+    # calculation.
+    training_carbon_override_kg: Mapped[Optional[float]] = mapped_column(Float)
+
+    # --- Inference-time inputs
+    inference_kwh_per_1k_predictions: Mapped[Optional[float]] = mapped_column(Float)
+    monthly_predictions: Mapped[Optional[int]] = mapped_column()
+
+    # --- Region + intensity (gCO2eq / kWh)
+    deployment_region: Mapped[str] = mapped_column(String(64), default="EU-Average")
+    carbon_intensity_g_per_kwh: Mapped[float] = mapped_column(Float, default=250.0)
+
+    assumptions: Mapped[str] = mapped_column(Text, default="")
+    data_source: Mapped[str] = mapped_column(Text, default="")
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    project: Mapped[Project] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<SustainabilityRecord {self.record_id} {self.project_id} "
+            f"{self.deployment_region!r}>"
+        )

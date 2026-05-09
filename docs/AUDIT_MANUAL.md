@@ -25,6 +25,7 @@ requirements, example CSVs, and how to read the results.
    - [4.6 Risk Register](#46-risk-register--art-9)
    - [4.7 Human Oversight](#47-human-oversight--art-14)
    - [4.8 Cybersecurity](#48-cybersecurity--art-155)
+   - [4.9 Sustainability](#49-sustainability--voluntary)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -582,6 +583,46 @@ hygiene.
 
 ---
 
+### 4.9 Sustainability — voluntary
+
+**What it does:** Captures a project's carbon footprint estimate. **Not**
+required by the EU AI Act (those are voluntary under Art. 95 + the AI
+Pact / codes of conduct), but customers reporting under CSRD or
+ISO/IEC 42001 ask for these numbers anyway.
+
+**Inputs (every field is optional — partial data still produces a partial estimate):**
+
+- **Training energy** (kWh) — convert from GPU-hours via
+  `kWh ≈ GPU-hours × board-TDP-W / 1000`, or pull straight from CodeCarbon
+  / eco2AI logs.
+- **Direct CO₂eq override** (kg, optional) — if the client measured
+  training carbon directly, use this instead of the kWh × intensity calc.
+- **Inference energy** (kWh per 1000 predictions) — typical ranges:
+  small tabular models 0.0001–0.001 kWh/1k; LLM serving 0.1–1.0 kWh/1k.
+- **Monthly predictions** (count) — production volume.
+- **Deployment region** — picks a default carbon intensity (gCO₂eq/kWh).
+  ~16 regions pre-loaded with public 2024 baselines.
+- **Carbon intensity** — overridable if the customer has a better figure.
+
+**Computed automatically:**
+
+- **Training carbon (kg)** = override OR (training kWh × intensity / 1000)
+- **Monthly inference energy (kWh)** = (predictions / 1000) × kWh/1k
+- **Annual operational footprint (kg CO₂eq)** = training + 12 × monthly inference × intensity / 1000
+
+**How to read it:**
+
+| Pill | Meaning |
+| --- | --- |
+| **Training** | One-shot training-time CO₂eq |
+| **Annual** | Training + 12 months of inference at the configured volume |
+| **Region** + **Intensity** | The grid the system runs on |
+
+**Tip:** even sketchy numbers are better than none for CSRD reporting.
+Get the order of magnitude right first; refine over time.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -670,6 +711,7 @@ Numeric / enum status labels you'll see, by module:
 | Risk Register | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (severity × likelihood) |
 | Human Oversight | Compliance percent `0–100%` (Art. 14.4 checkpoint score) |
 | Cybersecurity | Compliance percent `0–100%` (Art. 15(5) checkpoint score) |
+| Sustainability | Annual `kg CO₂eq` (informational, no threshold) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---
