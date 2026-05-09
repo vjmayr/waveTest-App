@@ -49,6 +49,46 @@ class TestNextId:
             assert next_id(db, Project.project_id,      "PRJ") == "PRJ0001"
             assert next_id(db, ProjectType.type_id,     "PT")  == "PT0001"
 
+    def test_concurrent_calls_produce_unique_ids(self):
+        """20 threads each allocate + insert a client; all IDs must be unique.
+
+        Uses a single shared in-memory connection (StaticPool) so all threads
+        see the same database. Without the module-level lock in next_id, the
+        read-then-allocate pattern races and at least two threads compute the
+        same ID, causing IntegrityError on the second insert.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+        from sqlalchemy.pool import StaticPool
+
+        from wavetest_app.db.session import Base
+
+        engine = create_engine(
+            "sqlite:///:memory:",
+            connect_args={"check_same_thread": False},
+            poolclass=StaticPool,
+            future=True,
+        )
+        Base.metadata.create_all(engine)
+        SessionLocal = sessionmaker(bind=engine, autoflush=False, future=True)
+
+        n_threads = 20
+
+        def worker(_idx: int) -> str:
+            with SessionLocal() as db:
+                cid = next_id(db, Client.client_id, "CLI")
+                db.add(Client(client_id=cid, company_name=f"co_{_idx}"))
+                db.commit()
+                return cid
+
+        with ThreadPoolExecutor(max_workers=n_threads) as ex:
+            ids = list(ex.map(worker, range(n_threads)))
+
+        assert len(ids) == n_threads
+        assert len(set(ids)) == n_threads, f"duplicate IDs: {sorted(ids)}"
+
 
 # ---------------------------------------------------------------------------
 # classify
