@@ -32,7 +32,7 @@ from wavetest_app.adapters.logging     import make_logging_assessment
 from wavetest_app.adapters.monitoring  import make_monitoring_assessment
 from wavetest_app.audit import record_run
 from wavetest_app.auth import require_login
-from wavetest_app.branding import render_cover
+from wavetest_app.branding import render_body, render_cover
 from wavetest_app.config import project_artifacts_dir
 from wavetest_app.ui import (
     csv_uploader,
@@ -478,7 +478,7 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
 
     # --- Combine + render
     progress.progress((selected) / (selected + 1), text="Combining envelopes + rendering PDF…")
-    from wavetest_report import ReportEnvelope, HTMLRenderer, JSONRenderer, PDFRenderer
+    from wavetest_report import ReportEnvelope, HTMLRenderer, JSONRenderer
     combined = ReportEnvelope.combined(*envelopes)
 
     artifacts = project_artifacts_dir(
@@ -500,12 +500,19 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
     HTMLRenderer(language=project.client.languages[0] if project.client.languages else "de") \
         .render(combined, output_path=html_path)
 
-    # PDF — render the report body first, then prepend a branded cover page.
-    # The toolchain's PDFRenderer is left untouched (working-directory rule);
-    # we just merge two PDFs together with pypdf.
+    # PDF — branded cover (one page) + app-side executive summary body.
+    # The toolchain's reportlab fallback was producing a verbose dump
+    # that wasn't customer-deliverable; the body renderer here uses the
+    # same envelope but renders an opinionated 1-3 page summary via
+    # reportlab's Platypus API. Detailed per-module data still lives in
+    # the JSON envelope download.
     body_pdf  = pdf_path.with_name(f"{base_name}__body.pdf")
     cover_pdf = pdf_path.with_name(f"{base_name}__cover.pdf")
-    PDFRenderer(engine="reportlab").render(combined, output_path=body_pdf)
+    render_body(
+        combined, body_pdf,
+        project_label=f"{project.client.company_name} / {project.project_name}",
+        panel_status=panel_status,
+    )
     render_cover(
         cover_pdf,
         project_id=project.project_id,

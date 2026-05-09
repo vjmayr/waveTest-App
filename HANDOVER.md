@@ -185,6 +185,19 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ### Recently closed
 
+- **Combined PDF body — clean Platypus replacement** — the toolchain's
+  `PDFRenderer(engine="reportlab")` fallback was a verbose dump
+  (overlapping cells, no spacing, big files). Replaced the body
+  generation in `pages/0_Combined_Report.py` with a new app-side
+  renderer at `wavetest_app.branding.body.render_body(...)` that uses
+  reportlab's Platypus API (BaseDocTemplate / Frame / Paragraph /
+  Table) for a 1-3 page customer-ready exec summary: header + project
+  metadata table + colour-coded overall-status box + headline metrics
+  (handles both dict and list shapes the toolchain emits) + module
+  strip + key findings + recommendations + page footer. Detailed
+  per-module data still ships as the JSON envelope. Cover (one page)
+  + new body (~1 page for a single module) → ~7 KB, down from the
+  toolchain's verbose dump.
 - **Right to Explanation (Art. 86)** — new `explanation_requests` table
   (Alembic `bbf12c64c999`), FK SET NULL + name snapshots so requests
   outlive engagements. Multiple per project (one per decision);
