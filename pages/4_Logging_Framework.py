@@ -215,8 +215,32 @@ if "lg_results" in st.session_state:
     st.markdown("#### Recommendations")
     show_recommendations(assessment.build_recommendations(results))
 
+    # Implementation guide preview — the toolchain's
+    # ImplementationGuideGenerator already produces this when "guide" is
+    # in formats=. Surface it inline so an analyst can review before
+    # handing it to the client's engineering team.
+    if "guide" in report_paths:
+        with st.expander(
+            "📘 Implementation Guide (preview)", expanded=False,
+        ):
+            st.caption(
+                f"Markdown playbook the client's engineering team uses to "
+                f"deploy the generated `AISystemLogger`. File: "
+                f"`{report_paths['guide'].name}`"
+            )
+            try:
+                guide_md = report_paths["guide"].read_text(encoding="utf-8")
+                st.markdown(guide_md)
+            except Exception as exc:
+                st.warning(f"Could not render guide preview: {exc}")
+
     # Downloads
     st.markdown("#### Exports")
+    label_for = {
+        "json":  "⬇ Report (JSON)",
+        "csv":   "⬇ Gaps (CSV)",
+        "guide": "⬇ Implementation Guide (Markdown)",
+    }
     cols = st.columns(len(report_paths) + 1)
     for col, (fmt, path) in zip(cols, report_paths.items()):
         mime = (
@@ -225,7 +249,7 @@ if "lg_results" in st.session_state:
             else "text/markdown"
         )
         col.download_button(
-            f"⬇ Download {fmt.upper()}",
+            label_for.get(fmt, f"⬇ Download {fmt.upper()}"),
             data=path.read_bytes(),
             file_name=path.name,
             mime=mime,
