@@ -154,6 +154,13 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ## Open follow-ups (priority order)
 
+> **Alibi Detect — Python 3.13 incompatible (deferred).** The library
+> pins `numba<...3.13` so `pip install alibi-detect` fails on the dev
+> environment. Equivalent functionality (KSDrift, MMDDrift, Isolation
+> Forest outliers) lives in `wavetest_monitoring` already via scipy.
+> Wait for an alibi-detect release that lifts the pin, or implement
+> the missing pieces (e.g. multivariate MMD test) ourselves.
+
 > **`next_id` second-order race.** A Python lock now serialises the
 > read+compute inside `next_id()` (good defense-in-depth) but each
 > caller's SQLAlchemy session establishes its read snapshot **before**

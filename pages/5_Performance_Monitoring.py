@@ -263,6 +263,72 @@ if "mn_results" in st.session_state:
     st.markdown("#### Recommendations")
     show_recommendations(assessment.build_recommendations(results))
 
+    # ---------------------------------------------------------------------
+    # Evidently AI — rich HTML drift / data-quality report. Splits the
+    # timeline into a reference half and a current half so the report
+    # tells a "before vs after" story by default; analyst can re-split
+    # if a different boundary makes sense.
+    # ---------------------------------------------------------------------
+    with st.expander(
+        "📊 Evidently AI — drift HTML report", expanded=False,
+    ):
+        st.caption(
+            "Generates a customer-shareable HTML report with per-feature "
+            "drift analysis, distribution plots, and a numerical summary. "
+            "Falls through silently if Evidently can't characterise the "
+            "data shape (very small frames, all-categorical, etc)."
+        )
+
+        # Sensible default: split at the median timestamp
+        if "timestamp" in df.columns and len(df) >= 50:
+            df_sorted = df.sort_values("timestamp")
+            mid = len(df_sorted) // 2
+            ref_default = df_sorted.iloc[:mid]
+            cur_default = df_sorted.iloc[mid:]
+            split_label = (
+                f"Default split: first {len(ref_default)} rows as reference, "
+                f"last {len(cur_default)} rows as current."
+            )
+        else:
+            # No timestamp / too small — just compare the dataframe to itself
+            ref_default = df
+            cur_default = df
+            split_label = "Comparing the dataset against itself (no usable split)."
+
+        st.caption(split_label)
+
+        if st.button("Generate Evidently report", key="mn_ev_run"):
+            with st.spinner("Running Evidently report…"):
+                try:
+                    from evidently import Report
+                    from evidently.presets import DataDriftPreset
+
+                    report = Report([DataDriftPreset()])
+                    snapshot = report.run(
+                        reference_data=ref_default,
+                        current_data=cur_default,
+                    )
+                    # Evidently 0.7's get_html_str requires an as_iframe
+                    # flag; True embeds plot.ly inline (heavy but
+                    # standalone); False emits a fragment that needs the
+                    # surrounding chrome. We want a portable file, so True.
+                    html = snapshot.get_html_str(as_iframe=True)
+                    st.session_state["mn_ev_html"] = html
+                except Exception as exc:
+                    st.error(
+                        f"Evidently report failed: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+
+        if "mn_ev_html" in st.session_state:
+            st.download_button(
+                "⬇ Download Evidently HTML report",
+                data=st.session_state["mn_ev_html"],
+                file_name=f"evidently_drift_{project.project_id}.html",
+                mime="text/html",
+                key="mn_ev_dl",
+            )
+
     # Downloads
     st.markdown("#### Exports")
     cols = st.columns(len(report_paths))
