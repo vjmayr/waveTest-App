@@ -6,6 +6,10 @@ Orchestrates DataQuality + Bias + Explainability + Logging + Monitoring,
 combines the resulting envelopes via :func:`wavetest_report.ReportEnvelope.combined`,
 and renders a single branded PDF for the customer presentation.
 
+Each module independently accepts either demo data or a client upload
+(CSV / pickled model), so the same page works for an internal smoke
+test and for the live customer presentation.
+
 PDF rendering uses the reportlab fallback (zero system deps); the PDF
 also writes alongside an HTML version and the combined JSON envelope.
 """
@@ -16,6 +20,7 @@ import json
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import streamlit as st
 
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
@@ -24,7 +29,14 @@ from wavetest_app.adapters.explain     import make_explain_assessment
 from wavetest_app.adapters.logging     import make_logging_assessment
 from wavetest_app.adapters.monitoring  import make_monitoring_assessment
 from wavetest_app.config import project_artifacts_dir
-from wavetest_app.ui import page_header, project_picker, risk_pill, show_recommendations
+from wavetest_app.ui import (
+    csv_uploader,
+    model_uploader,
+    page_header,
+    project_picker,
+    risk_pill,
+    show_recommendations,
+)
 
 st.set_page_config(
     page_title="Combined Report · waveTest",
@@ -48,72 +60,7 @@ st.markdown(
 )
 
 # ---------------------------------------------------------------------------
-# Configure (collapsed by default — sensible demo defaults work out-of-box)
-# ---------------------------------------------------------------------------
-with st.expander("⚙️ Demo-data settings (advanced)", expanded=False):
-    c1, c2 = st.columns(2)
-    with c1:
-        st.markdown("**Data Quality**")
-        dq_quality = st.selectbox(
-            "Quality level", ["clean", "moderate", "poor"], index=1,
-            key="cb_dq_q",
-        )
-        dq_n = st.number_input("Samples", 500, 20_000, 3000, 500, key="cb_dq_n")
-
-        st.markdown("**Bias**")
-        bias_level = st.selectbox(
-            "Bias level", ["none", "low", "moderate", "high"], index=2,
-            key="cb_bias_l",
-        )
-        bias_n = st.number_input("Samples", 500, 20_000, 2000, 500, key="cb_bias_n")
-        priv_text = st.text_area(
-            "Privileged groups (JSON)",
-            value=(
-                '{"geschlecht":"M","alter_gruppe":"<30",'
-                '"nationalitaet":"DE","behinderung":false}'
-            ),
-            height=80, key="cb_priv",
-        )
-
-    with c2:
-        st.markdown("**Explainability**")
-        exp_n_demo = st.number_input(
-            "Demo samples", 200, 5000, 800, 100, key="cb_exp_n",
-        )
-        exp_n_features = st.number_input(
-            "Demo features", 5, 30, 8, 1, key="cb_exp_f",
-        )
-        exp_n_explanations = st.number_input(
-            "Explanation samples", 10, 200, 30, 5, key="cb_exp_e",
-        )
-
-        st.markdown("**Monitoring**")
-        mon_drift = st.selectbox(
-            "Drift level", ["none", "moderate", "high"], index=1, key="cb_mon_d",
-        )
-        mon_n = st.number_input("Samples", 200, 5000, 800, 100, key="cb_mon_n")
-
-    st.markdown("**Logging — current-state assumptions**")
-    c3, c4 = st.columns(2)
-    with c3:
-        lg_has = st.checkbox("Has any logging today", key="cb_lg_h")
-        lg_in  = st.checkbox("Logs inputs",  key="cb_lg_i")
-        lg_out = st.checkbox("Logs outputs", value=True, key="cb_lg_o")
-        lg_ts  = st.checkbox("Logs timestamps", value=True, key="cb_lg_t")
-    with c4:
-        lg_struct = st.checkbox("Structured (JSON)",   key="cb_lg_s")
-        lg_personal = st.checkbox(
-            "Processes personal data", value=True, key="cb_lg_p",
-        )
-        lg_high_risk = st.checkbox(
-            "High-risk classification", value=True, key="cb_lg_r",
-        )
-        lg_retention = st.number_input(
-            "Retention days", 0, 3650, 90, 30, key="cb_lg_ret",
-        )
-
-# ---------------------------------------------------------------------------
-# Module toggles
+# Module toggles — pick first so users only configure what they include
 # ---------------------------------------------------------------------------
 st.markdown("**Modules to include in the combined report:**")
 mc1, mc2, mc3, mc4, mc5 = st.columns(5)
@@ -124,6 +71,197 @@ inc_lg    = mc4.checkbox("📝 Logging",       value=True, key="cb_inc_lg")
 inc_mon   = mc5.checkbox("📈 Monitoring",    value=True, key="cb_inc_mon")
 
 # ---------------------------------------------------------------------------
+# Per-module configuration (demo data or upload, plus assessment knobs)
+# ---------------------------------------------------------------------------
+with st.expander("⚙️ Per-module configuration", expanded=True):
+    c1, c2 = st.columns(2)
+
+    # --- Data Quality
+    with c1:
+        st.markdown("**📊 Data Quality**")
+        dq_src = st.radio(
+            "Data source",
+            ["Demo data (synthetic)", "Upload CSV"],
+            horizontal=True, key="cb_dq_src",
+            disabled=not inc_dq,
+        )
+        dq_upload = None
+        if dq_src == "Demo data (synthetic)":
+            dq_quality = st.selectbox(
+                "Quality level", ["clean", "moderate", "poor"], index=1,
+                key="cb_dq_q", disabled=not inc_dq,
+            )
+            dq_n = st.number_input(
+                "Samples", 500, 20_000, 3000, 500,
+                key="cb_dq_n", disabled=not inc_dq,
+            )
+        else:
+            dq_upload = csv_uploader(
+                "Drop a CSV with the dataset to assess",
+                key="cb_dq_upload",
+                help=(
+                    "Any tabular CSV. Columns named in the target population "
+                    "JSON below will be tested for representativeness; columns "
+                    "whose names match GDPR Art. 9 keywords are flagged."
+                ),
+            )
+
+        st.divider()
+
+        # --- Bias
+        st.markdown("**⚖️ Bias**")
+        bias_src = st.radio(
+            "Data source",
+            ["Demo data (synthetic)", "Upload CSV"],
+            horizontal=True, key="cb_bias_src",
+            disabled=not inc_bias,
+        )
+        bias_upload = None
+        if bias_src == "Demo data (synthetic)":
+            bias_level = st.selectbox(
+                "Bias level", ["none", "low", "moderate", "high"], index=2,
+                key="cb_bias_l", disabled=not inc_bias,
+            )
+            bias_n = st.number_input(
+                "Samples", 500, 20_000, 2000, 500,
+                key="cb_bias_n", disabled=not inc_bias,
+            )
+        else:
+            bias_upload = csv_uploader(
+                "Drop a CSV with predictions",
+                key="cb_bias_upload",
+                required_columns=["y_true", "y_pred"],
+                help=(
+                    "Required columns: `y_true`, `y_pred`. Plus one column "
+                    "for each key in the privileged-groups JSON below."
+                ),
+            )
+        priv_text = st.text_area(
+            "Privileged groups (JSON)",
+            value=(
+                '{"geschlecht":"M","alter_gruppe":"<30",'
+                '"nationalitaet":"DE","behinderung":false}'
+            ),
+            height=80, key="cb_priv", disabled=not inc_bias,
+        )
+
+    # --- Explainability + Monitoring
+    with c2:
+        st.markdown("**🔍 Explainability**")
+        exp_src = st.radio(
+            "Source",
+            ["Demo model (synthetic)", "Upload client model"],
+            horizontal=True, key="cb_exp_src",
+            disabled=not inc_exp,
+        )
+        exp_model = None
+        exp_test_df = None
+        exp_train_df = None
+        exp_target_col = "target"
+        if exp_src == "Demo model (synthetic)":
+            exp_n_demo = st.number_input(
+                "Demo samples", 200, 5000, 800, 100,
+                key="cb_exp_n", disabled=not inc_exp,
+            )
+            exp_n_features = st.number_input(
+                "Demo features", 5, 30, 8, 1,
+                key="cb_exp_f", disabled=not inc_exp,
+            )
+        else:
+            exp_model = model_uploader(
+                "Model file (.pkl / .joblib)",
+                key="cb_exp_model",
+                required_methods=["predict", "predict_proba"],
+            )
+            exp_target_col = st.text_input(
+                "Target column name in the test CSV",
+                value="target", key="cb_exp_target",
+                disabled=not inc_exp,
+            )
+            exp_test_df = csv_uploader(
+                "Test CSV (features + target column)",
+                key="cb_exp_test_csv",
+                help="One row per test sample. Feature columns will be passed "
+                     "to the model in the order they appear in the CSV.",
+            )
+            exp_train_df = csv_uploader(
+                "Training CSV (optional — improves SHAP background sampling)",
+                key="cb_exp_train_csv",
+                help="Same column layout as the test CSV. If omitted, SHAP "
+                     "uses the test data as background.",
+            )
+        exp_n_explanations = st.number_input(
+            "Explanation samples", 10, 200, 30, 5,
+            key="cb_exp_e", disabled=not inc_exp,
+        )
+
+        st.divider()
+
+        # --- Monitoring
+        st.markdown("**📈 Monitoring**")
+        mon_src = st.radio(
+            "Data source",
+            ["Demo data (synthetic)", "Upload CSV"],
+            horizontal=True, key="cb_mon_src",
+            disabled=not inc_mon,
+        )
+        mon_upload = None
+        if mon_src == "Demo data (synthetic)":
+            mon_drift = st.selectbox(
+                "Drift level", ["none", "moderate", "high"], index=1,
+                key="cb_mon_d", disabled=not inc_mon,
+            )
+            mon_n = st.number_input(
+                "Samples", 200, 5000, 800, 100,
+                key="cb_mon_n", disabled=not inc_mon,
+            )
+        else:
+            mon_upload = csv_uploader(
+                "Drop a CSV with monitoring data",
+                key="cb_mon_upload",
+                required_columns=["timestamp", "y_true", "y_pred"],
+                parse_dates=["timestamp"],
+                help=(
+                    "Required columns: `timestamp`, `y_true`, `y_pred`. "
+                    "Optional: `confidence`."
+                ),
+            )
+
+    # --- Logging — interview-only, no uploads
+    st.divider()
+    st.markdown("**📝 Logging — current-state assumptions**")
+    c3, c4 = st.columns(2)
+    with c3:
+        lg_has = st.checkbox(
+            "Has any logging today", key="cb_lg_h", disabled=not inc_lg,
+        )
+        lg_in  = st.checkbox(
+            "Logs inputs",  key="cb_lg_i", disabled=not inc_lg,
+        )
+        lg_out = st.checkbox(
+            "Logs outputs", value=True, key="cb_lg_o", disabled=not inc_lg,
+        )
+        lg_ts  = st.checkbox(
+            "Logs timestamps", value=True, key="cb_lg_t", disabled=not inc_lg,
+        )
+    with c4:
+        lg_struct = st.checkbox(
+            "Structured (JSON)", key="cb_lg_s", disabled=not inc_lg,
+        )
+        lg_personal = st.checkbox(
+            "Processes personal data", value=True,
+            key="cb_lg_p", disabled=not inc_lg,
+        )
+        lg_high_risk = st.checkbox(
+            "High-risk classification", value=True,
+            key="cb_lg_r", disabled=not inc_lg,
+        )
+        lg_retention = st.number_input(
+            "Retention days", 0, 3650, 90, 30,
+            key="cb_lg_ret", disabled=not inc_lg,
+        )
+
+# ---------------------------------------------------------------------------
 # Run all
 # ---------------------------------------------------------------------------
 if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_run"):
@@ -131,6 +269,47 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
     if selected == 0:
         st.error("Select at least one module to include.")
         st.stop()
+
+    # Validate uploads up front so we don't half-run the pipeline
+    if inc_dq and dq_src != "Demo data (synthetic)" and dq_upload is None:
+        st.error("Data Quality: upload a CSV or switch to demo data.")
+        st.stop()
+    if inc_bias and bias_src != "Demo data (synthetic)" and bias_upload is None:
+        st.error("Bias: upload a CSV or switch to demo data.")
+        st.stop()
+    if inc_exp and exp_src != "Demo model (synthetic)":
+        if exp_model is None:
+            st.error("Explainability: upload a model file or switch to the demo model.")
+            st.stop()
+        if exp_test_df is None:
+            st.error("Explainability: upload a test CSV or switch to the demo model.")
+            st.stop()
+        if not exp_target_col or exp_target_col not in exp_test_df.columns:
+            st.error(
+                f"Explainability: target column `{exp_target_col}` not found "
+                f"in test CSV. Available: {list(exp_test_df.columns)}"
+            )
+            st.stop()
+    if inc_mon and mon_src != "Demo data (synthetic)" and mon_upload is None:
+        st.error("Monitoring: upload a CSV or switch to demo data.")
+        st.stop()
+
+    # Bias privileged-groups JSON parses + validates against upload columns
+    privileged_groups = None
+    if inc_bias:
+        try:
+            privileged_groups = json.loads(priv_text)
+        except json.JSONDecodeError as exc:
+            st.error(f"Privileged-groups JSON is invalid: {exc}")
+            st.stop()
+        if bias_src != "Demo data (synthetic)":
+            missing = [c for c in privileged_groups if c not in bias_upload.columns]
+            if missing:
+                st.error(
+                    f"Bias: privileged-groups columns missing from CSV: {missing}\n\n"
+                    f"CSV columns: {list(bias_upload.columns)}"
+                )
+                st.stop()
 
     progress = st.progress(0.0, text="Initialising…")
     envelopes = []
@@ -150,7 +329,10 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
             project.project_id,
             target_population={"gender": {"M": 0.49, "F": 0.51}},
         )
-        df = generate_demo_data(n_samples=int(dq_n), quality_level=dq_quality)
+        if dq_src == "Demo data (synthetic)":
+            df = generate_demo_data(n_samples=int(dq_n), quality_level=dq_quality)
+        else:
+            df = dq_upload
         r = a.run(df, verbose=False)
         envelopes.append(ReportEnvelope.from_dataquality(a, r))
         panel_status["📊 Data Quality"] = (
@@ -163,15 +345,17 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
         _bump("Running Bias…")
         from wavetest_fairness import generate_demo_data as bias_demo
         from wavetest_report import ReportEnvelope
-        try:
-            priv = json.loads(priv_text)
-        except json.JSONDecodeError as exc:
-            st.error(f"Privileged-groups JSON is invalid: {exc}")
-            st.stop()
-        a = make_fairness_assessment(project.project_id, privileged_groups=priv)
-        y_true, y_pred, sf, _ = bias_demo(
-            n_samples=int(bias_n), bias_level=bias_level,
+        a = make_fairness_assessment(
+            project.project_id, privileged_groups=privileged_groups,
         )
+        if bias_src == "Demo data (synthetic)":
+            y_true, y_pred, sf, _ = bias_demo(
+                n_samples=int(bias_n), bias_level=bias_level,
+            )
+        else:
+            y_true = bias_upload["y_true"]
+            y_pred = bias_upload["y_pred"]
+            sf = bias_upload[list(privileged_groups.keys())]
         r = a.run(y_true, y_pred, sf, verbose=False)
         envelopes.append(ReportEnvelope.from_fairness(a, r))
         risk_v = a.overall_risk.value
@@ -182,7 +366,6 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
 
     # --- 3. Explainability
     if inc_exp:
-        _bump("Running Explainability (training demo model + SHAP)…")
         from wavetest_explain.core.assessment import AssessmentConfig
         from wavetest_explain.data.demo import generate_demo_model
         from wavetest_report import ReportEnvelope
@@ -190,12 +373,47 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
             n_explanation_samples=int(exp_n_explanations),
         )
         a = make_explain_assessment(project.project_id, config=cfg)
-        bundle = generate_demo_model(
-            n_samples=int(exp_n_demo), n_features=int(exp_n_features),
-        )
+
+        if exp_src == "Demo model (synthetic)":
+            _bump("Running Explainability (training demo model + SHAP)…")
+            bundle = generate_demo_model(
+                n_samples=int(exp_n_demo), n_features=int(exp_n_features),
+            )
+            model = bundle.model
+            X_test = bundle.X_test
+            y_test = bundle.y_test
+            feature_names = bundle.feature_names
+            X_train = bundle.X_train
+        else:
+            _bump("Running Explainability (uploaded model + SHAP)…")
+            feature_names = [
+                c for c in exp_test_df.columns if c != exp_target_col
+            ]
+            X_test = exp_test_df[feature_names].to_numpy()
+            y_test = exp_test_df[exp_target_col].to_numpy()
+            model = exp_model
+            if exp_train_df is not None:
+                train_missing = [
+                    c for c in feature_names + [exp_target_col]
+                    if c not in exp_train_df.columns
+                ]
+                if train_missing:
+                    st.error(
+                        f"Explainability: training CSV is missing columns: {train_missing}"
+                    )
+                    st.stop()
+                X_train = exp_train_df[feature_names].to_numpy()
+            else:
+                X_train = None
+
+        X_test = np.asarray(X_test)
+        y_test = np.asarray(y_test)
+        if X_train is not None:
+            X_train = np.asarray(X_train)
+
         r = a.run(
-            bundle.model, bundle.X_test, bundle.y_test,
-            bundle.feature_names, bundle.X_train, verbose=False,
+            model, X_test, y_test,
+            feature_names, X_train, verbose=False,
         )
         envelopes.append(ReportEnvelope.from_explainability(a, r))
         panel_status["🔍 Explain"] = (
@@ -236,9 +454,12 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
         from wavetest_monitoring import generate_demo_monitoring_data
         from wavetest_report import ReportEnvelope
         a = make_monitoring_assessment(project.project_id)
-        df = generate_demo_monitoring_data(
-            n_samples=int(mon_n), drift_level=mon_drift,
-        )
+        if mon_src == "Demo data (synthetic)":
+            df = generate_demo_monitoring_data(
+                n_samples=int(mon_n), drift_level=mon_drift,
+            )
+        else:
+            df = mon_upload
         r = a.run(df, verbose=False)
         envelopes.append(ReportEnvelope.from_monitoring(a, r))
         compliant = a.is_article_15_compliant(r)

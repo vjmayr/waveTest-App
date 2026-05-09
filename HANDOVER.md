@@ -154,28 +154,31 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ## Open follow-ups (priority order)
 
-1. **Combined-report uploads** — the Combined page currently runs only on
-   demo data. Add the same `csv_uploader` / `model_uploader` widgets per
-   module so the full presentation can run against real client data.
-   Estimate: ~3 h. Files: `pages/0_Combined_Report.py`.
-2. **Auth + multi-user deployment** — pick streamlit-authenticator (simpler)
+1. **Auth + multi-user deployment** — pick streamlit-authenticator (simpler)
    or an OIDC-aware reverse proxy (Caddy or nginx + oauth2-proxy). Add
    Litestream for SQLite backups. Estimate: ~2 days. Touches: `Home.py`,
    `pyproject.toml`, new `deploy/` folder, README.
-3. **Branded title page + cover image** for the combined PDF — purely
+2. **Branded title page + cover image** for the combined PDF — purely
    cosmetic, ~30 min. Could go in the app via a small reportlab pre-page,
    or via the toolchain's HTMLRenderer if you want it to also show in HTML.
    The toolchain change is small but breaks the working-directory rule —
    prefer the app-side path.
-4. **Audit log table** for assessment runs (who, when, which project,
+3. **Audit log table** for assessment runs (who, when, which project,
    summary status). Useful when multiple analysts share a server.
    Estimate: ~3 h.
-5. **Migrate the lingering `datetime.utcnow()` calls** to
+4. **Migrate the lingering `datetime.utcnow()` calls** to
    `datetime.now(UTC)`. Estimate: 15 min.
-6. **First Alembic migration** — currently `init_db()` issues CREATE
+5. **First Alembic migration** — currently `init_db()` issues CREATE
    TABLE; before any schema change in production you'll want one
    `alembic revision --autogenerate` baseline migration committed.
    Estimate: 30 min.
+
+### Recently closed
+
+- **Combined-report uploads** — `pages/0_Combined_Report.py` now offers a
+  per-module Demo-vs-Upload radio (CSV for DataQuality / Bias / Monitoring,
+  model + test/train CSVs for Explainability) so the customer presentation
+  can run against real client data. Logging stays interview-only.
 
 ## Toolchain reference (frozen)
 
