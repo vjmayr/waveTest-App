@@ -120,7 +120,7 @@ def main() -> int:
 
     AUTH_USERS_PATH.chmod(0o600)
     print(f"✅ User `{username}` saved to {AUTH_USERS_PATH}")
-    print("Restart Streamlit so the cached authenticator picks up the change.")
+    print("The new credentials are picked up on the next page render — no Streamlit restart needed.")
     return 0
 
 

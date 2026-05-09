@@ -118,8 +118,8 @@ python scripts/auth_add_user.py --username jdoe --email jdoe@example.com \
 The first run generates a random `cookie.key` and writes the file with mode
 `0600`. Re-run to add more users; pass `--force` to overwrite an existing one.
 
-**After editing the YAML, restart Streamlit** so the cached `Authenticate`
-instance picks up the new credentials.
+Edits to `auth/users.yaml` are picked up on the next page render — no
+Streamlit restart needed.
 
 The authenticated username is automatically captured in the `audit_log.actor`
 column for every assessment run.

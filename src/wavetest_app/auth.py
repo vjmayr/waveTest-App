@@ -19,13 +19,14 @@ import yaml
 from wavetest_app.config import AUTH_USERS_PATH
 
 
-@st.cache_resource
 def get_authenticator() -> stauth.Authenticate:
-    """Build (or return the cached) Authenticate from auth/users.yaml.
+    """Build a fresh Authenticate from ``auth/users.yaml``.
 
-    Cached for the lifetime of the Streamlit process. If you edit the YAML
-    (add a user, rotate a password) restart the Streamlit server so the
-    cache picks the new file up.
+    Not cached: ``streamlit-authenticator`` 0.4 instantiates a Streamlit
+    cookie-manager component inside ``Authenticate.__init__``, and
+    Streamlit refuses to create widgets inside ``@st.cache_resource``.
+    The YAML parse is cheap and edits to the file pick up on the next
+    rerun without a server restart.
     """
     if not AUTH_USERS_PATH.exists():
         raise FileNotFoundError(
