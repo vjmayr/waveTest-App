@@ -22,6 +22,7 @@ dependencies = [
     "streamlit-authenticator>=0.4",  # bcrypt-based login + session cookie
     "PyYAML>=6",                     # auth/users.yaml parsing
     "codecarbon>=3.0",               # carbon footprint estimation + 213-country intensity table
+    "lime>=0.2",                     # complementary local explanations alongside SHAP
 
     # waveTest toolchain — install editable from sibling checkout via
     # scripts/install_toolchain.sh (see README). Listed here as documentation.

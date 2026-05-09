@@ -225,6 +225,10 @@ if st.button("▶ Run assessment", type="primary", key="exp_run"):
     # Store enough for the downstream visuals (kept generic — no DemoBundle)
     st.session_state["exp_X_test"]       = X_test
     st.session_state["exp_feature_names"] = feature_names
+    # Also persist the model + X_train so LIME can re-explain instances
+    # on subsequent reruns without forcing a full re-run.
+    st.session_state["exp_model"]        = model
+    st.session_state["exp_X_train"]      = X_train
 
 # ---------------------------------------------------------------------------
 # Results
@@ -288,7 +292,7 @@ if "exp_results" in st.session_state:
 
     # Local case explanations
     if results.local_analysis and results.local_analysis.explanations:
-        st.markdown("#### Local case explanations")
+        st.markdown("#### Local case explanations (SHAP)")
         st.dataframe(
             [
                 {
@@ -309,6 +313,79 @@ if "exp_results" in st.session_state:
             f"as borderline (confidence < "
             f"{assessment.config.confidence_threshold:.2f})."
         )
+
+    # ---------------------------------------------------------------------
+    # LIME — complementary local explanations (alongside SHAP, mirroring
+    # notebook 03-shap_explainability_assessment.ipynb which uses both).
+    # SHAP is fast & global; LIME is per-instance, model-agnostic, and
+    # often produces plainer-language top-feature lists for an analyst.
+    # ---------------------------------------------------------------------
+    model_obj = st.session_state.get("exp_model")
+    X_train_obj = st.session_state.get("exp_X_train")
+    if (
+        model_obj is not None
+        and hasattr(model_obj, "predict_proba")
+        and results.local_analysis
+        and results.local_analysis.explanations
+    ):
+        with st.expander(
+            "🔍 LIME local explanations (complementary to SHAP)",
+            expanded=False,
+        ):
+            try:
+                from lime.lime_tabular import LimeTabularExplainer
+
+                # LIME needs a pool of training data to learn the local
+                # linear approximation. Fall back to X_test if X_train
+                # wasn't provided.
+                training_pool = X_train_obj if X_train_obj is not None else X_test
+                explainer = LimeTabularExplainer(
+                    training_data=np.asarray(training_pool),
+                    feature_names=feature_names,
+                    mode="classification",
+                    discretize_continuous=True,
+                )
+
+                # Pick the borderline cases first, fall back to the
+                # first three explanations if none are borderline.
+                borderline = [
+                    e for e in results.local_analysis.explanations
+                    if e.is_borderline
+                ]
+                cases = (borderline or results.local_analysis.explanations)[:3]
+
+                st.caption(
+                    f"Showing LIME for **{len(cases)}** "
+                    f"{'borderline' if borderline else 'sample'} case(s). "
+                    "Each weight is the contribution of that feature to "
+                    "the predicted class."
+                )
+
+                for e in cases:
+                    if e.index >= len(X_test):
+                        continue
+                    explanation = explainer.explain_instance(
+                        np.asarray(X_test[e.index]),
+                        model_obj.predict_proba,
+                        num_features=8,
+                    )
+                    rows = [
+                        {"Feature / range": label, "Weight": f"{weight:+.4f}"}
+                        for label, weight in explanation.as_list()
+                    ]
+                    st.markdown(
+                        f"**Case {e.index}** — predicted "
+                        f"`{e.predicted_label}` "
+                        f"(confidence {e.confidence:.3f})"
+                    )
+                    st.dataframe(
+                        rows, hide_index=True, use_container_width=True,
+                    )
+            except Exception as exc:
+                st.info(
+                    "LIME analysis not available for this model "
+                    f"({type(exc).__name__}). SHAP results above are still valid."
+                )
 
     # Compliance checklist
     if comp:
