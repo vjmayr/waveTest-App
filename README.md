@@ -1,11 +1,30 @@
 # wavetest-app
 
-Streamlit GUI for the [waveImpact Responsible AI Toolchain](https://github.com/waveImpactGmbH/RAI-TOOLCHAIN).
-An internal multi-analyst tool that replaces the notebook-based workflow with a browser UI.
+Internal **Technical Compliance Toolkit** for high-risk AI systems under the
+EU AI Act. Streamlit GUI on top of the [waveImpact Responsible AI Toolchain](https://github.com/waveImpactGmbH/RAI-TOOLCHAIN),
+replacing the notebook-based workflow with a browser UI for ≤10 analysts.
 
 > **Analyst quickstart:** see [docs/AUDIT_MANUAL.md](docs/AUDIT_MANUAL.md) for
-> the step-by-step audit workflow, per-module input requirements, example CSVs,
-> and how to read the reports.
+> the step-by-step workflow, per-module input requirements, example CSVs, and
+> how to read the reports.
+
+## Scope
+
+The toolkit covers the **technical** half of an EU AI Act high-risk-system
+audit. Each module produces a customer-deliverable report.
+
+| Article | Topic | Status |
+| --- | --- | --- |
+| Art. 10 | Data and data governance | ✅ Covered (Data Quality module) |
+| Art. 12 | Record-keeping | ✅ Covered (Logging Framework module) |
+| Art. 13 | Transparency (model-level) | 🟡 Partial (Explainability — model logic only, not deployer info package) |
+| Art. 15 | Accuracy & robustness | 🟡 Partial (Performance Monitoring — cybersecurity slice missing) |
+| Art. 61 / 72 | Post-market monitoring | 🟡 Partial (Monitoring + Logging — formal incident lifecycle missing) |
+| Art. 9, 11, 14, 16-29, 47, 49, 73, 86 | Governance & lifecycle | ❌ Not yet covered — see [HANDOVER.md](HANDOVER.md) |
+
+The app is **not** a substitute for full conformity assessment, a quality
+management system, or notified-body interaction. It produces the technical
+evidence and reports that feed into those processes.
 
 ---
 

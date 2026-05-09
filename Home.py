@@ -63,7 +63,9 @@ st.sidebar.caption(f"Signed in as **{st.session_state.get('name', '')}**")
 
 page_header(
     "🌊 waveTest — Operator Console",
-    "EU AI Act assessment toolchain · Internal multi-analyst tool",
+    "Technical Compliance Toolkit for high-risk AI systems · "
+    "covers Art. 10, 12 fully and 13 / 15 / 61 / 72 partially "
+    "(see README for scope)",
 )
 
 # ---------------------------------------------------------------------------
