@@ -22,12 +22,14 @@ from pathlib import Path
 
 import numpy as np
 import streamlit as st
+from pypdf import PdfWriter
 
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
 from wavetest_app.adapters.fairness    import make_fairness_assessment
 from wavetest_app.adapters.explain     import make_explain_assessment
 from wavetest_app.adapters.logging     import make_logging_assessment
 from wavetest_app.adapters.monitoring  import make_monitoring_assessment
+from wavetest_app.branding import render_cover
 from wavetest_app.config import project_artifacts_dir
 from wavetest_app.ui import (
     csv_uploader,
@@ -491,8 +493,28 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
     # comments — fine as a preview)
     HTMLRenderer(language=project.client.languages[0] if project.client.languages else "de") \
         .render(combined, output_path=html_path)
-    # PDF (reportlab fallback covers all five module types)
-    PDFRenderer(engine="reportlab").render(combined, output_path=pdf_path)
+
+    # PDF — render the report body first, then prepend a branded cover page.
+    # The toolchain's PDFRenderer is left untouched (working-directory rule);
+    # we just merge two PDFs together with pypdf.
+    body_pdf  = pdf_path.with_name(f"{base_name}__body.pdf")
+    cover_pdf = pdf_path.with_name(f"{base_name}__cover.pdf")
+    PDFRenderer(engine="reportlab").render(combined, output_path=body_pdf)
+    render_cover(
+        cover_pdf,
+        project_id=project.project_id,
+        project_name=project.project_name,
+        client_name=project.client.company_name,
+        modules_included=list(panel_status.keys()),
+    )
+    writer = PdfWriter()
+    writer.append(str(cover_pdf))
+    writer.append(str(body_pdf))
+    with pdf_path.open("wb") as f:
+        writer.write(f)
+    writer.close()
+    body_pdf.unlink(missing_ok=True)
+    cover_pdf.unlink(missing_ok=True)
 
     progress.progress(1.0, text="Done.")
     st.session_state["cb_combined"]      = combined

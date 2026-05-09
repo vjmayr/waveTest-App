@@ -18,6 +18,7 @@ dependencies = [
     "pandas>=2.0",
     "matplotlib>=3.7",
     "reportlab>=4.0",  # PDF backend for the combined report (no system deps)
+    "pypdf>=5.0",      # merges the cover page in front of the toolchain's PDF
 
     # waveTest toolchain — install editable from sibling checkout via
     # scripts/install_toolchain.sh (see README). Listed here as documentation.

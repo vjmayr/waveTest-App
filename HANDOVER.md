@@ -158,17 +158,16 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
    or an OIDC-aware reverse proxy (Caddy or nginx + oauth2-proxy). Add
    Litestream for SQLite backups. Estimate: ~2 days. Touches: `Home.py`,
    `pyproject.toml`, new `deploy/` folder, README.
-2. **Branded title page + cover image** for the combined PDF — purely
-   cosmetic, ~30 min. Could go in the app via a small reportlab pre-page,
-   or via the toolchain's HTMLRenderer if you want it to also show in HTML.
-   The toolchain change is small but breaks the working-directory rule —
-   prefer the app-side path.
-3. **Audit log table** for assessment runs (who, when, which project,
+2. **Audit log table** for assessment runs (who, when, which project,
    summary status). Useful when multiple analysts share a server.
    Estimate: ~3 h.
 
 ### Recently closed
 
+- **Branded title page** — `src/wavetest_app/branding/cover.py` renders a
+  one-page reportlab cover (gradient band + project metadata + Article
+  chips + brand footer) that gets prepended to the toolchain's PDF via
+  pypdf. App-side only; toolchain stays frozen.
 - **First Alembic migration** — `alembic/versions/f9bff52d1773_baseline_schema.py`
   creates all four tables. The live dev DB has been stamped at this revision;
   fresh setups use `alembic upgrade head` (see README). `init_db()` still works
