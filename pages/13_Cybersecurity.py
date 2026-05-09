@@ -12,6 +12,12 @@ the customer file.
 from __future__ import annotations
 
 import streamlit as st
+import io
+import pickle
+import time
+
+import numpy as np
+import pandas as pd
 from sqlalchemy import select
 
 from wavetest_app._time import utc_now
@@ -263,3 +269,136 @@ if plan is not None:
         file_name=f"cybersecurity_plan_{project.project_id}.md",
         mime="text/markdown",
     )
+
+# ---------------------------------------------------------------------------
+# Active adversarial testing — IBM ART HopSkipJump (decision-based,
+# blackbox; works on any classifier with .predict() — no gradient access
+# required, no PyTorch / TF needed for a sklearn pipeline).
+# ---------------------------------------------------------------------------
+st.divider()
+with st.expander(
+    "🎯 Active adversarial testing (IBM ART)", expanded=False,
+):
+    st.caption(
+        "Wraps the uploaded model with `art.estimators.SklearnClassifier` "
+        "and runs **HopSkipJump** — a decision-based, blackbox evasion "
+        "attack — against a sample of the test set. Reports how much the "
+        "accuracy drops and the L2 perturbation magnitude needed to flip "
+        "predictions. This is the active-testing layer the v0 questionnaire "
+        "above asks the team about (`adversarial_input_controls`)."
+    )
+
+    art_cols = st.columns(2)
+    with art_cols[0]:
+        art_model_file = st.file_uploader(
+            "Pickled model (.pkl / .joblib) — must implement `predict`",
+            type=["pkl", "pickle", "joblib"],
+            key="art_model",
+        )
+        art_target = st.text_input(
+            "Target column", value="target", key="art_target",
+        )
+    with art_cols[1]:
+        art_csv_file = st.file_uploader(
+            "Test CSV (features + target)", type=["csv"], key="art_csv",
+        )
+        art_n_samples = st.number_input(
+            "Samples to attack", 1, 50, 10, 1, key="art_n",
+            help="Each sample needs many model queries — stay small "
+                 "while exploring.",
+        )
+
+    if st.button(
+        "Run HopSkipJump attack",
+        type="primary",
+        key="art_run",
+        disabled=(art_model_file is None or art_csv_file is None),
+    ):
+        try:
+            from art.attacks.evasion import HopSkipJump
+            from art.estimators.classification import SklearnClassifier
+            from sklearn.metrics import accuracy_score
+
+            model = pickle.loads(art_model_file.getvalue())
+            test_df = pd.read_csv(io.BytesIO(art_csv_file.getvalue()))
+            if art_target not in test_df.columns:
+                st.error(
+                    f"Target column `{art_target}` not in CSV. "
+                    f"Got: {list(test_df.columns)}"
+                )
+                st.stop()
+
+            feature_cols = [c for c in test_df.columns if c != art_target]
+            X = test_df[feature_cols].head(int(art_n_samples)).to_numpy()
+            y = test_df[art_target].head(int(art_n_samples)).to_numpy()
+
+            with st.spinner("Wrapping model + running HopSkipJump…"):
+                clip_lo = float(np.min(X))
+                clip_hi = float(np.max(X))
+                clf = SklearnClassifier(
+                    model=model, clip_values=(clip_lo, clip_hi),
+                )
+                attack = HopSkipJump(
+                    classifier=clf,
+                    max_iter=10,
+                    max_eval=200,
+                    init_eval=20,
+                    init_size=20,
+                    targeted=False,
+                )
+                t0 = time.time()
+                X_adv = attack.generate(x=X.astype(float))
+                duration = time.time() - t0
+
+            orig_pred = model.predict(X)
+            adv_pred = model.predict(X_adv)
+            orig_acc = accuracy_score(y, orig_pred)
+            adv_acc = accuracy_score(y, adv_pred)
+            success_rate = float(np.mean(orig_pred != adv_pred))
+            mean_l2 = float(np.linalg.norm(X_adv - X, axis=1).mean())
+
+            from wavetest_app.ui import risk_pill
+
+            attack_color = (
+                "ok" if success_rate < 0.20 else
+                "warning" if success_rate < 0.50 else "critical"
+            )
+            pills = (
+                risk_pill(
+                    "Original accuracy", f"{orig_acc:.0%}", "info",
+                ) +
+                risk_pill(
+                    "Adversarial accuracy", f"{adv_acc:.0%}", attack_color,
+                ) +
+                risk_pill(
+                    "Attack success rate", f"{success_rate:.0%}",
+                    attack_color,
+                ) +
+                risk_pill(
+                    "Mean L2 perturbation", f"{mean_l2:.3f}",
+                    "info",
+                )
+            )
+            st.markdown(pills, unsafe_allow_html=True)
+            st.caption(
+                f"{int(art_n_samples)} samples attacked in {duration:.1f}s. "
+                f"`success_rate >= 50%` is critical — the model's "
+                f"decision boundary is highly exploitable. "
+                f"Recommend adversarial training, input filtering, or "
+                f"defensive distillation."
+            )
+            record_run(
+                project=project, module="cybersecurity",
+                status=f"ART attack: {success_rate:.0%} success",
+                status_color=attack_color,
+                status_detail=(
+                    f"HopSkipJump on {int(art_n_samples)} samples; "
+                    f"acc {orig_acc:.0%} → {adv_acc:.0%}, "
+                    f"L2 {mean_l2:.2f}"
+                ),
+                duration_seconds=duration,
+            )
+        except Exception as exc:
+            st.error(
+                f"ART attack failed: {type(exc).__name__}: {exc}"
+            )
