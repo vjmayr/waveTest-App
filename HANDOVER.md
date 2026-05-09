@@ -166,15 +166,16 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 3. **Audit log table** for assessment runs (who, when, which project,
    summary status). Useful when multiple analysts share a server.
    Estimate: ~3 h.
-4. **Migrate the lingering `datetime.utcnow()` calls** to
-   `datetime.now(UTC)`. Estimate: 15 min.
-5. **First Alembic migration** — currently `init_db()` issues CREATE
-   TABLE; before any schema change in production you'll want one
-   `alembic revision --autogenerate` baseline migration committed.
-   Estimate: 30 min.
 
 ### Recently closed
 
+- **First Alembic migration** — `alembic/versions/f9bff52d1773_baseline_schema.py`
+  creates all four tables. The live dev DB has been stamped at this revision;
+  fresh setups use `alembic upgrade head` (see README). `init_db()` still works
+  as a `create_all` shortcut but you should `alembic stamp head` after using it.
+- **datetime.utcnow() migration** — replaced 13 call sites with
+  `wavetest_app._time.utc_now()` (naive UTC, preserves on-disk format). Test
+  suite is now warning-free.
 - **Combined-report uploads** — `pages/0_Combined_Report.py` now offers a
   per-module Demo-vs-Upload radio (CSV for DataQuality / Bias / Monitoring,
   model + test/train CSVs for Explainability) so the customer presentation

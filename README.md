@@ -55,7 +55,7 @@ pip install -e .
 ./scripts/install_toolchain.sh ~/Documents/GitHub/RAI-TOOLCHAIN
 
 # 4. Initialise the SQLite database (creates data/wavetest_app.db with all tables)
-python -m wavetest_app.db.session --init
+alembic upgrade head
 
 # 5. (Optional) Import your existing waveImpact_ClientManagement/*.json data
 python scripts/import_console_json.py --toolchain ~/Documents/GitHub/RAI-TOOLCHAIN
@@ -74,16 +74,28 @@ pytest tests/
 
 ## Schema migrations
 
-Alembic is configured but no production migrations exist yet. After altering
-`src/wavetest_app/db/models.py`:
+Alembic is the source of truth for the schema. The `f9bff52d…_baseline_schema`
+revision creates all four tables (`clients`, `systems`, `projects`,
+`project_types`).
+
+After altering `src/wavetest_app/db/models.py`:
 
 ```bash
 alembic revision --autogenerate -m "describe the change"
 alembic upgrade head
 ```
 
-For first-time setup, `python -m wavetest_app.db.session --init` is enough — it issues
-`CREATE TABLE` statements for the current model.
+For first-time setup, `alembic upgrade head` creates the schema and stamps the
+DB at the latest revision. `python -m wavetest_app.db.session --init` is still
+available as a quick `Base.metadata.create_all()` shortcut for throwaway dev
+databases — but if you use it, run `alembic stamp head` afterwards so future
+migrations apply cleanly.
+
+If you have an existing pre-Alembic database, stamp it once:
+
+```bash
+alembic stamp head
+```
 
 ## Multi-analyst deployment (planned)
 
