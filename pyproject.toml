@@ -25,6 +25,7 @@ dependencies = [
     "lime>=0.2",                     # complementary local explanations alongside SHAP
     "great-expectations>=1.0",       # data-quality expectation suites (notebook 04)
     "ydata-profiling>=4.6",          # automatic dataset profile HTML report (notebook 04)
+    "fairlearn>=0.10",               # constraint-based fairness + per-group metric breakdowns
     "setuptools<81",                 # ydata-profiling depends on `pkg_resources`
                                      # which setuptools 81+ removed; pin until
                                      # ydata-profiling drops the legacy import.

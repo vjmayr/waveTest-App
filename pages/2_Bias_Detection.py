@@ -157,6 +157,9 @@ if st.button("▶ Run assessment", type="primary", key="bias_run"):
     st.session_state["bias_results"]      = results
     st.session_state["bias_report_paths"] = report_paths
     st.session_state["bias_features"]     = sensitive_features
+    # Snapshots for the Fairlearn complementary view
+    st.session_state["bias_y_true"]       = y_true
+    st.session_state["bias_y_pred"]       = y_pred
 
 # ---------------------------------------------------------------------------
 # Results
@@ -202,6 +205,80 @@ if "bias_results" in st.session_state:
     st.markdown("#### Protected-attribute distributions")
     fig2, _ = viz.plot_feature_distributions(features_df)
     st.pyplot(fig2, use_container_width=True)
+
+    # ---------------------------------------------------------------------
+    # Fairlearn — complementary per-group metric breakdowns. AIF360 above
+    # gives the risk classification; Fairlearn shows what the underlying
+    # rates actually look like per group, which is what analysts need
+    # for the client conversation.
+    # ---------------------------------------------------------------------
+    with st.expander(
+        "📊 Per-group metrics (Fairlearn)", expanded=False,
+    ):
+        st.caption(
+            "Selection rate, true-positive rate, false-positive rate per "
+            "subgroup of each protected attribute, plus disparity summaries."
+        )
+        try:
+            from fairlearn.metrics import (
+                MetricFrame,
+                demographic_parity_difference,
+                equalized_odds_difference,
+                false_positive_rate,
+                selection_rate,
+                true_positive_rate,
+            )
+            from sklearn.metrics import accuracy_score
+
+            # Recover the same y/sensitive_features arrays the assessment used
+            y_true_arr = st.session_state.get("bias_y_true")
+            y_pred_arr = st.session_state.get("bias_y_pred")
+            if y_true_arr is None or y_pred_arr is None:
+                st.info(
+                    "Re-run the assessment to enable Fairlearn — the "
+                    "y_true/y_pred snapshot wasn't saved on the previous run."
+                )
+            else:
+                metrics = {
+                    "accuracy":        accuracy_score,
+                    "selection_rate":  selection_rate,
+                    "true_pos_rate":   true_positive_rate,
+                    "false_pos_rate":  false_positive_rate,
+                }
+                # One MetricFrame per protected attribute → tabbed view.
+                tab_labels = list(features_df.columns)
+                tabs = st.tabs([f"`{c}`" for c in tab_labels])
+                for tab, col in zip(tabs, tab_labels):
+                    with tab:
+                        mf = MetricFrame(
+                            metrics=metrics,
+                            y_true=y_true_arr,
+                            y_pred=y_pred_arr,
+                            sensitive_features=features_df[col],
+                        )
+                        st.dataframe(
+                            mf.by_group, use_container_width=True,
+                        )
+                        dp = demographic_parity_difference(
+                            y_true=y_true_arr, y_pred=y_pred_arr,
+                            sensitive_features=features_df[col],
+                        )
+                        eo = equalized_odds_difference(
+                            y_true=y_true_arr, y_pred=y_pred_arr,
+                            sensitive_features=features_df[col],
+                        )
+                        st.caption(
+                            f"**Demographic parity difference**: "
+                            f"`{dp:+.3f}` (0 = perfectly equal selection "
+                            f"rates) · "
+                            f"**Equalized odds difference**: "
+                            f"`{eo:+.3f}` (0 = perfectly equal TPR + FPR)"
+                        )
+        except Exception as exc:
+            st.info(
+                f"Fairlearn analysis not available "
+                f"({type(exc).__name__}: {exc})."
+            )
 
     # Recommendations via the unified report envelope
     from wavetest_report import ReportEnvelope
