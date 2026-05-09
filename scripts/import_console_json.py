@@ -25,6 +25,7 @@ from pathlib import Path
 # Make src/ importable when running the script directly
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
+from wavetest_app._time import utc_now  # noqa: E402
 from wavetest_app.config import DEFAULT_TOOLCHAIN_ROOT  # noqa: E402
 from wavetest_app.db.models import (  # noqa: E402
     Client, Project, ProjectType, System,
@@ -68,8 +69,8 @@ def _import_project_types(data: dict, db, dry_run: bool) -> int:
             description=info.get("description", "") or "",
             standard_services=info.get("standard_services", []),
             is_default=bool(info.get("is_default", False)),
-            created_date=_parse_dt(info.get("created_date")) or datetime.utcnow(),
-            updated_date=_parse_dt(info.get("updated_date")) or datetime.utcnow(),
+            created_date=_parse_dt(info.get("created_date")) or utc_now(),
+            updated_date=_parse_dt(info.get("updated_date")) or utc_now(),
         )
         if existing:
             for k, v in attrs.items():
@@ -89,7 +90,7 @@ def _import_clients(data: dict, db, dry_run: bool) -> int:
             country=info.get("country"),
             languages=info.get("languages", ["en"]),
             folder_path=info.get("folder_path"),
-            created_date=_parse_dt(info.get("created_date")) or datetime.utcnow(),
+            created_date=_parse_dt(info.get("created_date")) or utc_now(),
         )
         existing = db.get(Client, client_id)
         if existing:
@@ -144,7 +145,7 @@ def _import_projects(data: dict, db, dry_run: bool) -> int:
             start_date=_parse_date(info.get("start_date")),
             folder_path=info.get("folder_path"),
             status=info.get("status", "active"),
-            created_date=_parse_dt(info.get("created_date")) or datetime.utcnow(),
+            created_date=_parse_dt(info.get("created_date")) or utc_now(),
         )
         if not attrs["client_id"]:
             print(f"  ⚠️  Project {project_id} has no client_id — skipping")

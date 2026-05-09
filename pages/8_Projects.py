@@ -9,12 +9,13 @@ the first time an assessment runs against the project.
 
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date
 
 import streamlit as st
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
+from wavetest_app._time import utc_now
 from wavetest_app.config import project_artifacts_dir
 from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import Client, Project, ProjectType
@@ -122,7 +123,7 @@ with st.form("new_project", clear_on_submit=False):
                     start_date=start_date,
                     folder_path=str(folder),
                     status="active",
-                    created_date=datetime.utcnow(),
+                    created_date=utc_now(),
                 ))
             st.success(f"Created project `{project_id}` — {project_name}")
             st.rerun()

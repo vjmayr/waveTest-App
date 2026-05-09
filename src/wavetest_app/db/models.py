@@ -18,6 +18,7 @@ from typing import Any, Optional
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, String, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
+from wavetest_app._time import utc_now
 from wavetest_app.db.session import Base
 
 
@@ -35,10 +36,10 @@ class ProjectType(Base):
     standard_services: Mapped[list[str]] = mapped_column(JSON, default=list)
     is_default: Mapped[bool] = mapped_column(Boolean, default=False)
     created_date: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow,
+        DateTime, default=utc_now,
     )
     updated_date: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow,
+        DateTime, default=utc_now,
     )
 
     projects: Mapped[list["Project"]] = relationship(back_populates="project_type_ref")
@@ -61,7 +62,7 @@ class Client(Base):
     languages: Mapped[list[str]] = mapped_column(JSON, default=list)
     folder_path: Mapped[Optional[str]] = mapped_column(Text)
     created_date: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow,
+        DateTime, default=utc_now,
     )
 
     systems: Mapped[list["System"]] = relationship(
@@ -125,7 +126,7 @@ class Project(Base):
     folder_path: Mapped[Optional[str]] = mapped_column(Text)
     status: Mapped[str] = mapped_column(String(32), default="active")
     created_date: Mapped[datetime] = mapped_column(
-        DateTime, default=datetime.utcnow,
+        DateTime, default=utc_now,
     )
 
     client: Mapped[Client] = relationship(back_populates="projects")

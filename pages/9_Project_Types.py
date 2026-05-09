@@ -9,11 +9,10 @@ copy through to the project at creation time.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import streamlit as st
 from sqlalchemy import select
 
+from wavetest_app._time import utc_now
 from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import ProjectType
 from wavetest_app.db.session import get_session
@@ -72,8 +71,8 @@ with st.form("new_pt", clear_on_submit=True):
                     description=description.strip(),
                     standard_services=services,
                     is_default=False,
-                    created_date=datetime.utcnow(),
-                    updated_date=datetime.utcnow(),
+                    created_date=utc_now(),
+                    updated_date=utc_now(),
                 ))
             st.success(f"Created project type `{type_id}` — {name}")
             st.rerun()

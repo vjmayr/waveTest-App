@@ -9,12 +9,11 @@ questionnaire. The classification result (PROHIBITED / HIGH-RISK / LIMITED-RISK
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import streamlit as st
 from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
+from wavetest_app._time import utc_now
 from wavetest_app.classification import (
     ENTITY_TYPES,
     HIGH_RISK_CATEGORIES,
@@ -126,7 +125,7 @@ with st.form("new_system", clear_on_submit=True):
                     client_id=client_id,
                     system_name=system_name.strip(),
                     description=system_description.strip(),
-                    classification_date=datetime.utcnow(),
+                    classification_date=utc_now(),
                     classification_data={**classification_payload, "results": results},
                 ))
 

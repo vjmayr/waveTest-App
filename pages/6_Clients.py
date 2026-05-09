@@ -8,11 +8,10 @@ Replaces the original console's Clients tab.
 
 from __future__ import annotations
 
-from datetime import datetime
-
 import streamlit as st
 from sqlalchemy import select
 
+from wavetest_app._time import utc_now
 from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import Client
 from wavetest_app.db.session import get_session
@@ -63,7 +62,7 @@ with st.form("new_client", clear_on_submit=True):
                     company_name=company_name.strip(),
                     country=country,
                     languages=langs,
-                    created_date=datetime.utcnow(),
+                    created_date=utc_now(),
                 ))
             st.success(f"Created client `{client_id}` — {company_name}")
             st.rerun()
