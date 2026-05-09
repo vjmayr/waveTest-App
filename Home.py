@@ -236,6 +236,10 @@ nav = st.navigation(
                     title="Right to Explanation",  icon="📨"),
             st.Page("pages/17_Model_Card.py",
                     title="Model Card",            icon="📇"),
+            st.Page("pages/18_Captum.py",
+                    title="Captum (CV / PyTorch)", icon="🖼"),
+            st.Page("pages/19_TextAttack.py",
+                    title="TextAttack (NLP)",      icon="📝"),
         ],
         "Admin": [
             st.Page("pages/6_Clients.py",       title="Clients",       icon="🏢"),
