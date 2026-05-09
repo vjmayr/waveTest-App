@@ -154,6 +154,16 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ## Open follow-ups (priority order)
 
+> **Combined Report audit-failure gap.** The 5 individual assessment pages
+> wrap their run block in `audit_assessment(...)` so a mid-run exception
+> writes a `status="FAILED"` audit entry. The Combined Report does not —
+> wrapping its ~220-line orchestration via re-indent was rejected as too
+> invasive for the value. If Combined throws mid-pipeline you'll see the
+> Streamlit error but no audit row. Acceptable today; a small refactor
+> (extract `_run_combined()` helper, call inside `audit_assessment`)
+> would close the gap when convenient.
+
+
 1. **Production deployment + Litestream** — the localhost-only auth is in
    place; what's outstanding is choosing a deploy target (internal Linux
    box / Docker), wiring the reverse proxy, and adding Litestream for

@@ -20,7 +20,7 @@ from wavetest_logging import (
 )
 
 from wavetest_app.adapters.logging import make_logging_assessment
-from wavetest_app.audit import record_run
+from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
 from wavetest_app.ui import page_header, project_picker, risk_pill, show_recommendations
 
@@ -120,29 +120,30 @@ if st.button("▶ Run assessment", type="primary", key="lg_run"):
         high_risk_classification=high_risk_classification,
     )
 
-    with st.spinner("Analysing gaps and generating framework…"):
-        assessment = make_logging_assessment(
-            project_id=project.project_id,
-            current_logging=current,
-            system_profile=profile,
-        )
-        _t0 = time.perf_counter()
-        results = assessment.run(verbose=False)
-        _dt = time.perf_counter() - _t0
-        report_paths = assessment.generate_reports(formats=["json", "csv", "guide"])
+    with audit_assessment(project, "logging"):
+        with st.spinner("Analysing gaps and generating framework…"):
+            assessment = make_logging_assessment(
+                project_id=project.project_id,
+                current_logging=current,
+                system_profile=profile,
+            )
+            _t0 = time.perf_counter()
+            results = assessment.run(verbose=False)
+            _dt = time.perf_counter() - _t0
+            report_paths = assessment.generate_reports(formats=["json", "csv", "guide"])
 
-    pct = results.summary["compliance_percent"]
-    color = "ok" if pct == 100 else "warning" if pct >= 50 else "critical"
-    record_run(
-        project=project, module="logging",
-        status=f"{pct}%", status_color=color,
-        status_detail=(
-            f"{results.summary['total_gaps']} gaps "
-            f"({results.summary['critical_gaps']} critical) · Art.12 "
-            f"{'compliant' if results.article_12_compliant else 'gaps'}"
-        ),
-        duration_seconds=_dt,
-    )
+        pct = results.summary["compliance_percent"]
+        color = "ok" if pct == 100 else "warning" if pct >= 50 else "critical"
+        record_run(
+            project=project, module="logging",
+            status=f"{pct}%", status_color=color,
+            status_detail=(
+                f"{results.summary['total_gaps']} gaps "
+                f"({results.summary['critical_gaps']} critical) · Art.12 "
+                f"{'compliant' if results.article_12_compliant else 'gaps'}"
+            ),
+            duration_seconds=_dt,
+        )
 
     st.session_state["lg_assessment"]   = assessment
     st.session_state["lg_results"]      = results

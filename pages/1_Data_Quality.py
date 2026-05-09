@@ -20,7 +20,7 @@ from wavetest_dataquality import (
 )
 
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
-from wavetest_app.audit import record_run
+from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
@@ -133,36 +133,37 @@ if run_clicked:
         st.error("Upload a CSV first or switch to demo data.")
         st.stop()
 
-    with st.spinner("Running assessment…"):
-        if source == "Demo data (synthetic)":
-            df = generate_demo_data(
-                n_samples=int(n_samples), quality_level=quality_level,
+    with audit_assessment(project, "data_quality"):
+        with st.spinner("Running assessment…"):
+            if source == "Demo data (synthetic)":
+                df = generate_demo_data(
+                    n_samples=int(n_samples), quality_level=quality_level,
+                )
+            else:
+                df = uploaded_df
+
+            assessment = make_dataquality_assessment(
+                project_id=project.project_id,
+                target_population=target_population,
+                thresholds=thresholds,
             )
-        else:
-            df = uploaded_df
+            _t0 = time.perf_counter()
+            results = assessment.run(df, verbose=False)
+            _dt = time.perf_counter() - _t0
+            report_paths = assessment.generate_reports(formats=["json", "csv"])
 
-        assessment = make_dataquality_assessment(
-            project_id=project.project_id,
-            target_population=target_population,
-            thresholds=thresholds,
+        score = results.metrics.overall_quality_score
+        color = "ok" if score >= 90 else "warning" if score >= 75 else "critical"
+        record_run(
+            project=project, module="data_quality",
+            status=results.metrics.quality_classification,
+            status_color=color,
+            status_detail=(
+                f"Quality {score:.1f} · Art.10 "
+                f"{'compliant' if results.article_10_compliant else 'gaps'}"
+            ),
+            duration_seconds=_dt,
         )
-        _t0 = time.perf_counter()
-        results = assessment.run(df, verbose=False)
-        _dt = time.perf_counter() - _t0
-        report_paths = assessment.generate_reports(formats=["json", "csv"])
-
-    score = results.metrics.overall_quality_score
-    color = "ok" if score >= 90 else "warning" if score >= 75 else "critical"
-    record_run(
-        project=project, module="data_quality",
-        status=results.metrics.quality_classification,
-        status_color=color,
-        status_detail=(
-            f"Quality {score:.1f} · Art.10 "
-            f"{'compliant' if results.article_10_compliant else 'gaps'}"
-        ),
-        duration_seconds=_dt,
-    )
 
     # Cache results in session state so re-renders don't lose them
     st.session_state["dq_df"]            = df

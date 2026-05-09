@@ -19,7 +19,7 @@ from wavetest_monitoring import (
 )
 
 from wavetest_app.adapters.monitoring import make_monitoring_assessment
-from wavetest_app.audit import record_run
+from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
@@ -147,37 +147,38 @@ if st.button("▶ Run assessment", type="primary", key="mn_run"):
         st.error("Upload a CSV first or switch to demo data.")
         st.stop()
 
-    with st.spinner("Running assessment…"):
-        if source == "Demo data (synthetic)":
-            df = generate_demo_monitoring_data(
-                n_samples=int(n_samples), drift_level=drift_level,
+    with audit_assessment(project, "monitoring"):
+        with st.spinner("Running assessment…"):
+            if source == "Demo data (synthetic)":
+                df = generate_demo_monitoring_data(
+                    n_samples=int(n_samples), drift_level=drift_level,
+                )
+            else:
+                df = uploaded_df
+            assessment = make_monitoring_assessment(
+                project_id=project.project_id,
+                config=cfg, system_profile=profile,
             )
-        else:
-            df = uploaded_df
-        assessment = make_monitoring_assessment(
-            project_id=project.project_id,
-            config=cfg, system_profile=profile,
-        )
-        _t0 = time.perf_counter()
-        results = assessment.run(df, verbose=False)
-        _dt = time.perf_counter() - _t0
-        report_paths = assessment.generate_reports(formats=["json", "csv"])
+            _t0 = time.perf_counter()
+            results = assessment.run(df, verbose=False)
+            _dt = time.perf_counter() - _t0
+            report_paths = assessment.generate_reports(formats=["json", "csv"])
 
-    status = results.overall_metrics.status(
-        cfg.accuracy_threshold, cfg.accuracy_degradation_tolerance,
-    )
-    color = {"GOOD": "ok", "WARNING": "warning", "CRITICAL": "critical"}[status]
-    record_run(
-        project=project, module="monitoring",
-        status=status, status_color=color,
-        status_detail=(
-            f"Accuracy {results.overall_metrics.accuracy:.2%} · "
-            f"drift {results.drift_count}/{len(results.drift_results)} · "
-            f"Art.15 "
-            f"{'compliant' if assessment.is_article_15_compliant(results) else 'gaps'}"
-        ),
-        duration_seconds=_dt,
-    )
+        status = results.overall_metrics.status(
+            cfg.accuracy_threshold, cfg.accuracy_degradation_tolerance,
+        )
+        color = {"GOOD": "ok", "WARNING": "warning", "CRITICAL": "critical"}[status]
+        record_run(
+            project=project, module="monitoring",
+            status=status, status_color=color,
+            status_detail=(
+                f"Accuracy {results.overall_metrics.accuracy:.2%} · "
+                f"drift {results.drift_count}/{len(results.drift_results)} · "
+                f"Art.15 "
+                f"{'compliant' if assessment.is_article_15_compliant(results) else 'gaps'}"
+            ),
+            duration_seconds=_dt,
+        )
 
     st.session_state["mn_df"]            = df
     st.session_state["mn_assessment"]    = assessment

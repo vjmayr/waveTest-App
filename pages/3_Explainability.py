@@ -19,7 +19,7 @@ from wavetest_explain.data.demo import generate_demo_model
 import numpy as np
 
 from wavetest_app.adapters.explain import make_explain_assessment
-from wavetest_app.audit import record_run
+from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
 from wavetest_app.ui import (
     csv_uploader, model_uploader, page_header, project_picker,
@@ -191,32 +191,33 @@ if st.button("▶ Run assessment", type="primary", key="exp_run"):
     if X_train is not None:
         X_train = np.asarray(X_train)
 
-    with st.spinner("Computing SHAP values + compliance mapping…"):
-        assessment = make_explain_assessment(
-            project_id=project.project_id, config=cfg,
-        )
-        _t0 = time.perf_counter()
-        results = assessment.run(
-            model=model,
-            X_test=X_test, y_test=y_test,
-            feature_names=feature_names,
-            X_train=X_train,
-            verbose=False,
-        )
-        _dt = time.perf_counter() - _t0
-        report_paths = assessment.generate_reports(formats=["json"])
+    with audit_assessment(project, "explainability"):
+        with st.spinner("Computing SHAP values + compliance mapping…"):
+            assessment = make_explain_assessment(
+                project_id=project.project_id, config=cfg,
+            )
+            _t0 = time.perf_counter()
+            results = assessment.run(
+                model=model,
+                X_test=X_test, y_test=y_test,
+                feature_names=feature_names,
+                X_train=X_train,
+                verbose=False,
+            )
+            _dt = time.perf_counter() - _t0
+            report_paths = assessment.generate_reports(formats=["json"])
 
-    color = (
-        "ok" if results.accuracy >= 0.85 else
-        "warning" if results.accuracy >= 0.70 else "critical"
-    )
-    comp_status = results.compliance.overall_status if results.compliance else "—"
-    record_run(
-        project=project, module="explainability",
-        status=f"{results.accuracy:.1%}", status_color=color,
-        status_detail=f"Accuracy {results.accuracy:.2%} · Compliance {comp_status}",
-        duration_seconds=_dt,
-    )
+        color = (
+            "ok" if results.accuracy >= 0.85 else
+            "warning" if results.accuracy >= 0.70 else "critical"
+        )
+        comp_status = results.compliance.overall_status if results.compliance else "—"
+        record_run(
+            project=project, module="explainability",
+            status=f"{results.accuracy:.1%}", status_color=color,
+            status_detail=f"Accuracy {results.accuracy:.2%} · Compliance {comp_status}",
+            duration_seconds=_dt,
+        )
 
     st.session_state["exp_assessment"]   = assessment
     st.session_state["exp_results"]      = results

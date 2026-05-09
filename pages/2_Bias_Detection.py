@@ -15,7 +15,7 @@ import streamlit as st
 from wavetest_fairness import FairnessVisualizer, generate_demo_data
 
 from wavetest_app.adapters.fairness import make_fairness_assessment
-from wavetest_app.audit import record_run
+from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
@@ -109,48 +109,49 @@ if st.button("▶ Run assessment", type="primary", key="bias_run"):
         st.error("Upload a CSV first or switch to demo data.")
         st.stop()
 
-    with st.spinner("Running assessment…"):
-        if source == "Demo data (synthetic)":
-            y_true, y_pred, sensitive_features, _full = generate_demo_data(
-                n_samples=int(n_samples), bias_level=bias_level,
-            )
-        else:
-            missing = [c for c in privileged_groups if c not in uploaded_df.columns]
-            if missing:
-                st.error(
-                    f"Privileged-groups columns missing from CSV: {missing}\n\n"
-                    f"CSV columns: {list(uploaded_df.columns)}"
+    with audit_assessment(project, "bias"):
+        with st.spinner("Running assessment…"):
+            if source == "Demo data (synthetic)":
+                y_true, y_pred, sensitive_features, _full = generate_demo_data(
+                    n_samples=int(n_samples), bias_level=bias_level,
                 )
-                st.stop()
-            y_true = uploaded_df["y_true"]
-            y_pred = uploaded_df["y_pred"]
-            sensitive_features = uploaded_df[list(privileged_groups.keys())]
+            else:
+                missing = [c for c in privileged_groups if c not in uploaded_df.columns]
+                if missing:
+                    st.error(
+                        f"Privileged-groups columns missing from CSV: {missing}\n\n"
+                        f"CSV columns: {list(uploaded_df.columns)}"
+                    )
+                    st.stop()
+                y_true = uploaded_df["y_true"]
+                y_pred = uploaded_df["y_pred"]
+                sensitive_features = uploaded_df[list(privileged_groups.keys())]
 
-        assessment = make_fairness_assessment(
-            project_id=project.project_id,
-            privileged_groups=privileged_groups,
-        )
-        _t0 = time.perf_counter()
-        results = assessment.run(
-            y_true=y_true, y_pred=y_pred,
-            sensitive_features=sensitive_features, verbose=False,
-        )
-        _dt = time.perf_counter() - _t0
-        report_paths = assessment.generate_reports(formats=["json", "csv"])
+            assessment = make_fairness_assessment(
+                project_id=project.project_id,
+                privileged_groups=privileged_groups,
+            )
+            _t0 = time.perf_counter()
+            results = assessment.run(
+                y_true=y_true, y_pred=y_pred,
+                sensitive_features=sensitive_features, verbose=False,
+            )
+            _dt = time.perf_counter() - _t0
+            report_paths = assessment.generate_reports(formats=["json", "csv"])
 
-    risk_v = assessment.overall_risk.value
-    color = (
-        "ok" if risk_v in ("NIEDRIG", "LOW") else
-        "warning" if risk_v in ("MITTEL", "MEDIUM") else "critical"
-    )
-    record_run(
-        project=project, module="bias",
-        status=risk_v, status_color=color,
-        status_detail=(
-            f"{assessment.critical_count}/{len(results)} critical findings"
-        ),
-        duration_seconds=_dt,
-    )
+        risk_v = assessment.overall_risk.value
+        color = (
+            "ok" if risk_v in ("NIEDRIG", "LOW") else
+            "warning" if risk_v in ("MITTEL", "MEDIUM") else "critical"
+        )
+        record_run(
+            project=project, module="bias",
+            status=risk_v, status_color=color,
+            status_detail=(
+                f"{assessment.critical_count}/{len(results)} critical findings"
+            ),
+            duration_seconds=_dt,
+        )
 
     st.session_state["bias_assessment"]   = assessment
     st.session_state["bias_results"]      = results

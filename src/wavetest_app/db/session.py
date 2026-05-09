@@ -12,11 +12,12 @@ Run as a module to bootstrap an empty database::
 """
 
 import argparse
+import sqlite3
 import sys
 from contextlib import contextmanager
 from typing import Iterator, Optional
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -29,6 +30,21 @@ class Base(DeclarativeBase):
 
 _engine: Optional[Engine] = None
 _SessionLocal: Optional[sessionmaker[Session]] = None
+
+
+@event.listens_for(Engine, "connect")
+def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
+    """Turn on SQLite FK enforcement on every connection.
+
+    SQLite ships with ``PRAGMA foreign_keys=OFF`` by default, which silently
+    disables ``ON DELETE SET NULL`` / ``CASCADE`` clauses. This listener
+    fires on every new connection and only acts on real ``sqlite3`` ones,
+    so swapping the URL to Postgres later is a no-op.
+    """
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON")
+        cursor.close()
 
 
 def init_engine(db_url: str = DB_URL, echo: bool = False) -> Engine:

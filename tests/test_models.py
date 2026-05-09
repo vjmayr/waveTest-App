@@ -122,18 +122,16 @@ def test_audit_log_roundtrip_and_project_delete_preserves_history(in_memory_db):
         assert row.client_name == "ACME"
         assert abs(row.duration_seconds - 0.42) < 1e-6
 
-    # Deleting the project must NOT erase audit history
-    # Note: SQLite enforces FOREIGN KEY ondelete only when PRAGMA foreign_keys=ON;
-    # SQLAlchemy emits a manual SET NULL via cascade configuration on the parent
-    # side. Here we test the contract: audit row survives, project_id nulled.
+    # Deleting the project must NOT erase audit history. SQLite FK
+    # enforcement is enabled globally via the engine connect listener,
+    # so ON DELETE SET NULL fires here.
     with get_session() as db:
         db.delete(db.get(Project, "PRJ0001"))
     with get_session() as db:
         rows = db.scalars(select(AuditLog)).all()
         assert len(rows) == 1
-        # Note: the FK ondelete behaviour depends on PRAGMA foreign_keys; the row
-        # must at minimum still exist with its name snapshot intact.
-        assert rows[0].project_name == "Audit"
+        assert rows[0].project_id is None  # FK cleared by ON DELETE SET NULL
+        assert rows[0].project_name == "Audit"  # snapshot preserved
         assert rows[0].client_name == "ACME"
 
 
