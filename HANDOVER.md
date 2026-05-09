@@ -185,6 +185,19 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ### Recently closed
 
+- **Right to Explanation (Art. 86)** — new `explanation_requests` table
+  (Alembic `bbf12c64c999`), FK SET NULL + name snapshots so requests
+  outlive engagements. Multiple per project (one per decision);
+  `subject_reference` holds the deployer's case ID *not* the natural
+  person's name (GDPR data minimisation noted in the help text). 30-day
+  default response window (overridable). Page
+  `pages/16_Right_To_Explanation.py` lets the analyst draft the
+  customer-facing letter via two free-text fields (top factors, what
+  could change the outcome) — both flow into a Markdown letter
+  template with a boilerplate "How an AI system was involved"
+  paragraph. The letter wording adapts to the human-review-offered
+  checkbox. 8 new pytest tests covering deadlines, persistence, FK
+  SET NULL, letter rendering for both human-review states.
 - **Incident reporting (Art. 73)** — new `incident_reports` table
   (Alembic `2670783b7954`), FK SET NULL + name snapshots so reports
   outlive engagements (audit-log pattern). Severity table encodes

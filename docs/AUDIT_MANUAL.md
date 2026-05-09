@@ -27,6 +27,7 @@ requirements, example CSVs, and how to read the results.
    - [4.8 Cybersecurity](#48-cybersecurity--art-155)
    - [4.9 Sustainability](#49-sustainability--voluntary)
    - [4.10 Incidents](#410-incidents--art-73)
+   - [4.11 Right to Explanation](#411-right-to-explanation--art-86)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -676,6 +677,59 @@ snapshots survive. The same pattern as the Audit Log.
 
 ---
 
+### 4.11 Right to Explanation — Art. 86
+
+**What it does:** Tracks individual right-to-explanation requests under
+Art. 86. Different from the Explainability page, which explains the
+*model* in general — Art. 86 is about a specific decision affecting a
+specific person. The deliverable is a **plain-language letter to the
+affected individual**.
+
+**Inputs per request:**
+
+- **Customer / case reference** — the deployer's case ID. **Never enter
+  the natural person's name** here (GDPR data minimisation).
+- **Decision date** + **decision outcome** (one sentence in plain language).
+- **Date request received** — drives the response deadline (default
+  30 days, mirroring GDPR Art. 12 cadence).
+- **Human review offered?** — most high-risk deployments do; uncheck only
+  if not available for this specific decision.
+
+**Drafting the letter:**
+
+Each request opens to an edit form with two free-text fields that go
+*directly* into the customer letter:
+
+1. **Top factors** — translate model features into language the affected
+   person will understand. Aim for **3 bullet points**, no jargon.
+   Example: ❌ "Income feature value 28000 contributed -0.32 SHAP" →
+   ✅ "Reported income below the standard threshold for the product."
+2. **What could change the outcome** — conditions under which the
+   decision would change. If nothing reasonable would, say so.
+
+**The letter template** automatically includes:
+
+- A "How an AI system was involved" paragraph (boilerplate).
+- The two free-text sections you wrote.
+- A "Your right to human review" paragraph that varies based on the
+  *Human review offered?* checkbox.
+- A close referencing the deployer + the internal request ID.
+
+**Status pills:**
+
+| Pill | Meaning |
+| --- | --- |
+| **Status** | `open` (red), `in_progress` (yellow), `sent` / `closed` (green) |
+| **Deadline** | Days remaining until response due — green > 5, yellow ≤ 5, red overdue, green if already sent |
+| **Human review** | "offered" (green) or "not offered" (yellow) |
+
+**Tip:** the response deadline isn't fixed by the AI Act itself —
+national implementations vary. The 30-day default mirrors GDPR. If your
+client's national regulator publishes a stricter timeline, override the
+**Response due date** field.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -766,6 +820,7 @@ Numeric / enum status labels you'll see, by module:
 | Cybersecurity | Compliance percent `0–100%` (Art. 15(5) checkpoint score) |
 | Sustainability | Annual `kg CO₂eq` (informational, no threshold) |
 | Incidents | `LOGGED INCxxxx` / `UPDATED INCxxxx` (severity-coloured) |
+| Right to Explanation | `LOGGED RTExxxx` / `UPDATED RTExxxx` (status-coloured) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---

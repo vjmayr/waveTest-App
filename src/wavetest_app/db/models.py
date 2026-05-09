@@ -495,3 +495,69 @@ class IncidentReport(Base):
             f"<IncidentReport {self.incident_id} "
             f"[{self.severity}] {self.status}>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Individual-explanation request — Art. 86
+# ---------------------------------------------------------------------------
+class ExplanationRequest(Base):
+    """One Art. 86 right-to-explanation request from an affected person.
+
+    Deployers must provide clear and meaningful explanations of the role
+    of the AI system + the main elements of the decision when an affected
+    natural person asks. The deliverable is a *letter*, not a notified-
+    body packet.
+    """
+
+    __tablename__ = "explanation_requests"
+
+    request_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    project_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_name: Mapped[str] = mapped_column(String(255), default="")
+
+    # Opaque case reference / customer ID — never store the natural person's
+    # identity directly here (GDPR data-minimisation).
+    subject_reference: Mapped[str] = mapped_column(String(128), default="")
+
+    decision_date: Mapped[Optional[date]] = mapped_column(Date)
+    decision_outcome: Mapped[str] = mapped_column(Text, default="")
+
+    request_received_date: Mapped[Optional[date]] = mapped_column(Date)
+    response_due_date: Mapped[Optional[date]] = mapped_column(Date)
+    response_sent_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    factors_text: Mapped[str] = mapped_column(Text, default="")
+    alternative_paths: Mapped[str] = mapped_column(Text, default="")
+    human_review_offered: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    # open / in_progress / sent / closed
+    status: Mapped[str] = mapped_column(String(32), default="open")
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    project: Mapped[Optional[Project]] = relationship()
+
+    __table_args__ = (
+        Index("ix_explanation_requests_project_id", "project_id"),
+        Index("ix_explanation_requests_status", "status"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<ExplanationRequest {self.request_id} "
+            f"{self.subject_reference!r} {self.status}>"
+        )
