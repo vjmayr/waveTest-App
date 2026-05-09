@@ -185,6 +185,14 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ### Recently closed
 
+- **Human Oversight (Art. 14)** — new `oversight_plans` table (Alembic
+  `3a6027e32dfc`), unique constraint on `project_id` so each project has
+  one editable plan. Six Art. 14.4 (a)–(e) yes/partial/no checkpoints
+  scored 3/1/0 → `compliance_percent`. Page `pages/12_Human_Oversight.py`
+  with operator profile, gap + mitigation fields, computed compliance
+  pill, recommendations per `no` / `partial` answer, Markdown deliverable
+  download. CASCADE delete with the project. 8 new pytest tests covering
+  the scoring matrix + uniqueness constraint + cascade.
 - **Risk Register (Art. 9)** — new `risk_register` table (Alembic
   migration `aea6f9f57c46`), `wavetest_app.risk` helper for the
   severity × likelihood matrix, page `pages/11_Risk_Management.py`

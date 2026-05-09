@@ -252,3 +252,60 @@ class RiskEntry(Base):
             f"<RiskEntry {self.risk_id} {self.project_id} "
             f"{self.title!r} [{self.risk_level}]>"
         )
+
+
+# ---------------------------------------------------------------------------
+# Human-oversight plan — Art. 14
+# ---------------------------------------------------------------------------
+class OversightPlan(Base):
+    """One oversight plan per project: Art. 14.4 (a)–(e) checklist + notes.
+
+    Each yes / partial / no answer maps to a 0–3 score; the sum drives
+    ``compliance_percent``. A unique constraint on ``project_id`` enforces
+    "one plan per engagement" — analysts edit the existing plan rather
+    than creating new ones.
+    """
+
+    __tablename__ = "oversight_plans"
+
+    plan_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+    project_id: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="CASCADE"),
+        unique=True,
+        nullable=False,
+    )
+
+    # Free-text profile of who oversees the system + how
+    operator_profile: Mapped[str] = mapped_column(Text, default="")
+
+    # Six yes/partial/no checkpoints. Stored as strings so the UI can keep
+    # the human-readable labels and the migration story stays simple.
+    has_documentation: Mapped[str] = mapped_column(String(8), default="no")
+    automation_bias_training: Mapped[str] = mapped_column(String(8), default="no")
+    outputs_include_uncertainty: Mapped[str] = mapped_column(String(8), default="no")
+    override_mechanism: Mapped[str] = mapped_column(String(8), default="no")
+    override_logged: Mapped[str] = mapped_column(String(8), default="no")
+    stop_mechanism: Mapped[str] = mapped_column(String(8), default="no")
+
+    gaps: Mapped[str] = mapped_column(Text, default="")
+    mitigation_plan: Mapped[str] = mapped_column(Text, default="")
+    next_review_date: Mapped[Optional[date]] = mapped_column(Date)
+
+    compliance_percent: Mapped[float] = mapped_column(Float, default=0.0)
+
+    created_by: Mapped[str] = mapped_column(String(64), default="system")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+
+    project: Mapped[Project] = relationship()
+
+    def __repr__(self) -> str:
+        return (
+            f"<OversightPlan {self.plan_id} {self.project_id} "
+            f"{self.compliance_percent:.0f}%>"
+        )

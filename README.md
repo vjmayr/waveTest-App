@@ -19,9 +19,10 @@ audit. Each module produces a customer-deliverable report.
 | Art. 10 | Data and data governance | ✅ Covered (Data Quality module) |
 | Art. 12 | Record-keeping | ✅ Covered (Logging Framework module) |
 | Art. 13 | Transparency (model-level) | 🟡 Partial (Explainability — model logic only, not deployer info package) |
+| Art. 14 | Human oversight | ✅ Covered (Human Oversight module) |
 | Art. 15 | Accuracy & robustness | 🟡 Partial (Performance Monitoring — cybersecurity slice missing) |
 | Art. 61 / 72 | Post-market monitoring | 🟡 Partial (Monitoring + Logging — formal incident lifecycle missing) |
-| Art. 11, 14, 16-29, 47, 49, 73, 86 | Governance & lifecycle | ❌ Not yet covered — see [HANDOVER.md](HANDOVER.md) |
+| Art. 11, 16-29, 47, 49, 73, 86 | Governance & lifecycle | ❌ Not yet covered — see [HANDOVER.md](HANDOVER.md) |
 
 The app is **not** a substitute for full conformity assessment, a quality
 management system, or notified-body interaction. It produces the technical

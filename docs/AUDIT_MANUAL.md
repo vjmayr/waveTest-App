@@ -23,6 +23,7 @@ requirements, example CSVs, and how to read the results.
    - [4.4 Logging Framework](#44-logging-framework--art-12--72)
    - [4.5 Performance Monitoring](#45-performance-monitoring--art-15--72)
    - [4.6 Risk Register](#46-risk-register--art-9)
+   - [4.7 Human Oversight](#47-human-oversight--art-14)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -500,6 +501,51 @@ one changed?" — that's exactly the lifecycle Art. 9 asks for.
 
 ---
 
+### 4.7 Human Oversight — Art. 14
+
+**What it does:** Captures the project's *Human Oversight Plan* against
+the six Article 14.4 (a)–(e) checkpoints. One plan per project,
+edit-in-place. Generates a Markdown deliverable for the customer file.
+
+**What you need from the client:** Conversation, not data:
+
+- Operator profile — who runs the system day-to-day, training, decision
+  authority, throughput
+- For each Art. 14.4 checkpoint: yes / partial / no
+- The current gaps and a mitigation plan
+- A next-review date
+
+**The six checkpoints:**
+
+| # | Requirement | Sub-clause |
+| --- | --- | --- |
+| 1 | Operators have documentation covering capabilities + limitations | Art. 14.4(a) |
+| 2 | Operators are trained to recognise automation bias | Art. 14.4(b) |
+| 3 | Outputs include confidence / uncertainty information | Art. 14.4(c) |
+| 4 | Operators can disregard or reverse system outputs | Art. 14.4(d) |
+| 5 | Overrides are logged and traceable to a specific operator | Art. 14.4(d) |
+| 6 | Stop / interrupt mechanism exists and is documented | Art. 14.4(e) |
+
+**Scoring:** each *yes* = 3 points, *partial* = 1, *no* = 0. Total ÷ 18 → percent.
+
+**How to read the result:**
+
+| Pill | Meaning |
+| --- | --- |
+| **Compliance %** | 100 = ok (green), 50–99 = warning (yellow), <50 = critical (red). |
+| **Last updated** / **Next review** | Drive the lifecycle; pick a review date that makes sense for the deployment cadence. |
+
+The page lists per-checkpoint **recommendations** automatically — one
+per `no` (treat as blocker for high-risk deployment) and one per `partial`
+(define gap + mitigation). Use the **Markdown export** to send the plan
+to the customer.
+
+**Interplay with the Risk Register:** every *no* on a Human Oversight
+checkpoint is a candidate **risk** to record on page 11 with category
+`oversight`. The two pages are designed to feed each other.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -586,6 +632,7 @@ Numeric / enum status labels you'll see, by module:
 | Logging | Compliance percent `0–100%` |
 | Monitoring | `GOOD`, `WARNING`, `CRITICAL` |
 | Risk Register | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (severity × likelihood) |
+| Human Oversight | Compliance percent `0–100%` (Art. 14.4 checkpoint score) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---
