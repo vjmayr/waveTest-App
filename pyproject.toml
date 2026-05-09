@@ -21,6 +21,7 @@ dependencies = [
     "pypdf>=5.0",      # merges the cover page in front of the toolchain's PDF
     "streamlit-authenticator>=0.4",  # bcrypt-based login + session cookie
     "PyYAML>=6",                     # auth/users.yaml parsing
+    "codecarbon>=3.0",               # carbon footprint estimation + 213-country intensity table
 
     # waveTest toolchain — install editable from sibling checkout via
     # scripts/install_toolchain.sh (see README). Listed here as documentation.

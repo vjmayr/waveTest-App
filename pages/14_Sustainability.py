@@ -19,9 +19,10 @@ from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import SustainabilityRecord
 from wavetest_app.db.session import get_session
 from wavetest_app.sustainability import (
-    REGION_INTENSITIES_G_PER_KWH,
     annual_carbon_kg,
+    intensity_for,
     monthly_inference_kwh,
+    region_options,
     to_markdown,
     training_carbon_kg,
 )
@@ -185,31 +186,39 @@ with st.form("sus_form"):
     st.markdown("### Region")
     c5, c6 = st.columns(2)
     with c5:
-        regions = list(REGION_INTENSITIES_G_PER_KWH.keys())
+        # Build the dropdown from CodeCarbon's official 213-country
+        # ``global_energy_mix.json`` plus a couple of curated aggregates.
+        # ``region_keys`` is what we store; ``region_labels`` is what we show.
+        opts = region_options()
+        region_labels = [label for label, _ in opts]
+        region_keys = [key for _, key in opts]
         try:
-            region_idx = regions.index(defaults["deployment_region"])
+            region_idx = region_keys.index(defaults["deployment_region"])
         except ValueError:
-            region_idx = regions.index("EU-Average")
-        deployment_region = st.selectbox(
+            region_idx = region_keys.index("EU-Average")
+        chosen_label = st.selectbox(
             "Deployment region",
-            regions,
+            region_labels,
             index=region_idx,
+            help="Carbon intensities sourced from CodeCarbon's public "
+                 "global_energy_mix.json (213 countries).",
         )
+        deployment_region = region_keys[region_labels.index(chosen_label)]
     with c6:
-        # Default the intensity to the region's value the FIRST time,
-        # but let the user override afterwards.
+        # Pre-fill from CodeCarbon's table on first render; user can edit.
+        codecarbon_intensity = intensity_for(deployment_region)
         intensity_default = (
             defaults["carbon_intensity_g_per_kwh"]
             if record is not None
-            else REGION_INTENSITIES_G_PER_KWH[deployment_region]
+            else (codecarbon_intensity if codecarbon_intensity is not None else 250.0)
         )
         carbon_intensity = st.number_input(
             "Carbon intensity (gCO₂eq / kWh)",
             min_value=0.0,
             value=float(intensity_default),
             step=10.0,
-            help="Public 2024 baselines pre-filled per region; overwrite "
-                 "with the customer's actual figure if they have one.",
+            help="Pre-filled from CodeCarbon. Overwrite if the customer "
+                 "has a more accurate figure (e.g. their own grid mix).",
         )
 
     st.markdown("### Notes")

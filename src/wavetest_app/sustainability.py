@@ -2,47 +2,97 @@
 wavetest_app.sustainability — voluntary carbon-footprint estimator
 =======================================================================
 
-Not an EU AI Act requirement (those are voluntary under Art. 95 + the
-AI Pact / codes of conduct), but customers reporting under CSRD or
-ISO/IEC 42001 ask for these numbers anyway. The page collects four
-inputs (training kWh, inference kWh per 1k predictions, deployment
-region, monthly prediction volume) and produces training + annual
-operational carbon estimates.
+Backed by `CodeCarbon <https://codecarbon.io>`_'s ``global_energy_mix.json``
+(213 countries, kept up to date by the upstream project) for region
+carbon-intensity values. The page collects four inputs (training kWh,
+inference kWh per 1k predictions, deployment region, monthly prediction
+volume) and produces training + annual operational carbon estimates.
 
-Numbers in this module are public 2024 grid-intensity baselines. Edit
-in-place from the form if a customer has a more accurate figure.
+For *live* training-time tracking the analyst should run CodeCarbon's
+``EmissionsTracker`` inside the customer's training script — that's the
+authoritative path. This module accepts the resulting kWh / kg numbers
+back as form inputs and assembles the deliverable.
+
+Not an EU AI Act requirement (voluntary under Art. 95 + the AI Pact /
+codes of conduct), but useful for CSRD / ISO 42001 reporting.
 """
 
 from __future__ import annotations
 
+import json
+from functools import lru_cache
+from pathlib import Path
 from typing import Optional
 
-# Public regional electricity carbon intensity, gCO2eq/kWh, ~2024.
-# Sources mixed (Ember, IEA, Our World in Data) — figures are coarse on
-# purpose so analysts override with the customer's own number.
-REGION_INTENSITIES_G_PER_KWH: dict[str, float] = {
-    "EU-Average":       250,
-    "Germany":          380,
-    "France":            60,
-    "Sweden":            30,
-    "Norway":            25,
-    "Poland":           700,
-    "Spain":            150,
-    "Italy":            260,
-    "Netherlands":      280,
-    "Austria":           90,
-    "Switzerland":       40,
-    "UK":               180,
-    "USA-Average":      380,
-    "China-Average":    580,
-    "India-Average":    700,
-    "Global-Average":   475,
-    "Custom":           250,  # placeholder — user edits the number
+
+# A small set of curated multi-country aggregates kept on top of the
+# CodeCarbon country list. CodeCarbon doesn't ship "EU average" — useful
+# when the customer can't pin down a single member state.
+_CURATED_AGGREGATES: dict[str, tuple[str, float]] = {
+    "EU-Average":     ("European Union (avg)",  250.0),
+    "Global-Average": ("Global average",        475.0),
 }
 
 
+@lru_cache(maxsize=1)
+def _codecarbon_data() -> dict[str, dict]:
+    """Load CodeCarbon's ``global_energy_mix.json`` (cached for the process).
+
+    Falls back to an empty dict if the file moves between codecarbon
+    releases — we still keep the curated aggregates above.
+    """
+    try:
+        import codecarbon  # type: ignore
+    except ImportError:
+        return {}
+    data_path = (
+        Path(codecarbon.__file__).parent
+        / "data" / "private_infra" / "global_energy_mix.json"
+    )
+    if not data_path.exists():
+        return {}
+    with data_path.open(encoding="utf-8") as f:
+        return json.load(f)
+
+
+def region_options() -> list[tuple[str, str]]:
+    """Return ``[(display_label, intensity_key), ...]`` sorted alphabetically.
+
+    The intensity_key is what we store in the DB column. Aggregates come
+    first, then individual countries.
+    """
+    items: list[tuple[str, str]] = []
+    for key, (label, _) in _CURATED_AGGREGATES.items():
+        items.append((label, key))
+    countries = sorted(
+        (
+            (entry.get("country_name", iso), iso)
+            for iso, entry in _codecarbon_data().items()
+            if "carbon_intensity" in entry
+        ),
+        key=lambda t: t[0],
+    )
+    items.extend(countries)
+    items.append(("Custom (edit intensity below)", "Custom"))
+    return items
+
+
+def intensity_for(region_key: str) -> Optional[float]:
+    """Look up gCO₂eq/kWh for an aggregate or ISO3 country code.
+
+    Returns ``None`` if the key is unknown — the page falls back to the
+    user-entered intensity in that case.
+    """
+    if region_key in _CURATED_AGGREGATES:
+        return _CURATED_AGGREGATES[region_key][1]
+    entry = _codecarbon_data().get(region_key)
+    if entry and "carbon_intensity" in entry:
+        return float(entry["carbon_intensity"])
+    return None
+
+
 def carbon_kg(kwh: Optional[float], intensity_g_per_kwh: float) -> Optional[float]:
-    """``kWh × g_per_kWh / 1000 = kg``. Returns None if no kWh given."""
+    """``kWh × g/kWh / 1000 = kg``. Returns None if no kWh given."""
     if kwh is None:
         return None
     return round(kwh * intensity_g_per_kwh / 1000.0, 2)
@@ -87,6 +137,33 @@ def annual_carbon_kg(
     return round(sum(parts), 2)
 
 
+# Backwards-compat: the old hard-coded dict is still importable so the
+# existing tests continue to pass without forcing a wholesale rewrite.
+# It now derives from the codecarbon source plus the curated aggregates.
+def _legacy_intensity_table() -> dict[str, float]:
+    table: dict[str, float] = {
+        label: intensity for label, (_, intensity) in _CURATED_AGGREGATES.items()
+    }
+    # Add a few common Western European labels under their human names —
+    # mirrors the previous v0 keys so legacy DB rows resolve.
+    name_aliases = {
+        "Germany": "DEU", "France": "FRA", "Sweden": "SWE", "Norway": "NOR",
+        "Poland": "POL", "Spain": "ESP", "Italy": "ITA",
+        "Netherlands": "NLD", "Austria": "AUT", "Switzerland": "CHE",
+        "UK": "GBR", "USA-Average": "USA", "China-Average": "CHN",
+        "India-Average": "IND",
+    }
+    for name, iso in name_aliases.items():
+        i = intensity_for(iso)
+        if i is not None:
+            table[name] = i
+    table.setdefault("Custom", 250.0)
+    return table
+
+
+REGION_INTENSITIES_G_PER_KWH: dict[str, float] = _legacy_intensity_table()
+
+
 def to_markdown(record: dict, *, project_label: str) -> str:
     """Render the carbon estimate as a Markdown deliverable."""
     intensity = record.get("carbon_intensity_g_per_kwh", 250.0)
@@ -109,10 +186,12 @@ def to_markdown(record: dict, *, project_label: str) -> str:
     lines = [
         f"# Sustainability Estimate — {project_label}",
         "",
-        "_Voluntary disclosure — not a legal requirement under the EU AI Act, but useful for CSRD / ISO 42001 reporting._",
+        "_Voluntary disclosure — not a legal requirement under the EU AI "
+        "Act, but useful for CSRD / ISO 42001 reporting._",
         "",
         f"**Region**: {record.get('deployment_region', 'Custom')}  ",
-        f"**Carbon intensity**: {intensity:.0f} gCO₂eq/kWh  ",
+        f"**Carbon intensity**: {intensity:.0f} gCO₂eq/kWh "
+        "(source: CodeCarbon `global_energy_mix.json`)  ",
         f"**Last updated**: {record['updated_at'].strftime('%Y-%m-%d %H:%M')}",
         "",
         "## Footprint",
@@ -140,6 +219,20 @@ def to_markdown(record: dict, *, project_label: str) -> str:
         "## Notes",
         "",
         record.get("notes") or "_None recorded._",
+        "",
+        "## How to capture training emissions live",
+        "",
+        "For an authoritative training-time number, run "
+        "[CodeCarbon's](https://codecarbon.io) `EmissionsTracker` inside "
+        "the customer's training script::",
+        "",
+        "    from codecarbon import EmissionsTracker",
+        "    with EmissionsTracker(project_name='cardio-v2', "
+        "country_iso_code='DEU') as tracker:",
+        "        train_model(...)",
+        "    # tracker writes emissions.csv with kWh + kg CO₂eq",
+        "",
+        "Then enter the kWh and kg numbers above as the override.",
         "",
         "---",
         "",

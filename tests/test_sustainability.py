@@ -8,7 +8,9 @@ from wavetest_app.sustainability import (
     REGION_INTENSITIES_G_PER_KWH,
     annual_carbon_kg,
     carbon_kg,
+    intensity_for,
     monthly_inference_kwh,
+    region_options,
     training_carbon_kg,
 )
 
@@ -58,6 +60,38 @@ def test_region_table_intensities_in_plausible_range():
     """Sanity-check: every value within 10–1500 g/kWh."""
     for region, value in REGION_INTENSITIES_G_PER_KWH.items():
         assert 10 <= value <= 1500, f"{region}={value} is implausible"
+
+
+# ---------------------------------------------------------------------------
+# codecarbon integration
+# ---------------------------------------------------------------------------
+class TestCodecarbonIntegration:
+    def test_iso3_lookup_returns_published_value(self):
+        # Germany's intensity in CodeCarbon's table — the *exact* value may
+        # drift between releases, but it should be in the 200–500 ballpark
+        # for a fossil-heavy grid.
+        intensity = intensity_for("DEU")
+        assert intensity is not None
+        assert 200 <= intensity <= 500
+
+    def test_unknown_iso_returns_none(self):
+        assert intensity_for("XXX") is None
+
+    def test_curated_aggregate_resolves(self):
+        # EU-Average is curated, not from codecarbon
+        assert intensity_for("EU-Average") == 250.0
+
+    def test_region_options_includes_213_plus_curated(self):
+        opts = region_options()
+        # ≥ ~210 countries from CodeCarbon + 2 aggregates + 1 Custom slot
+        assert len(opts) >= 200
+        # Display labels are unique
+        labels = [label for label, _ in opts]
+        assert len(labels) == len(set(labels)), "duplicate region labels"
+        # Aggregates appear at the top
+        assert "European Union (avg)" in labels[:5]
+        # Custom is the last entry
+        assert opts[-1] == ("Custom (edit intensity below)", "Custom")
 
 
 # ---------------------------------------------------------------------------
