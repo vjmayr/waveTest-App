@@ -160,9 +160,14 @@ Two roles, declared per-user in the `roles:` list of `auth/users.yaml`:
 
 The bootstrap script defaults to `--role analyst`. **Create your first user
 with `--role admin`** so you can set up clients and projects. To upgrade an
-existing user, either edit `auth/users.yaml` directly (change `roles: [analyst]`
-to `roles: [admin]`) or run `python scripts/auth_add_user.py --force --role admin
---username YOU` (this re-prompts for the password).
+existing user later:
+
+```bash
+python scripts/auth_set_role.py --username YOU --role admin
+# or multiple: --role analyst,admin
+```
+
+This touches _only_ the role list — no password re-entry needed.
 
 The authenticated username is automatically captured in the `audit_log.actor`
 column for every assessment run.

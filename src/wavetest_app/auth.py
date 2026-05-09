@@ -119,7 +119,7 @@ def require_role(role: str) -> None:
     if role not in current_user_roles():
         st.error(
             f"⛔ This page requires the **{role}** role. "
-            "Ask an admin to grant it (edit `auth/users.yaml` or re-run "
-            "`python scripts/auth_add_user.py --force --role admin --username YOU`)."
+            f"Ask an admin to grant it via "
+            f"`python scripts/auth_set_role.py --username YOU --role {role}`."
         )
         st.stop()
