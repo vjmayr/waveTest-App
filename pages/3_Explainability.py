@@ -9,6 +9,8 @@ demo models; client model upload is a future feature.
 
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 from wavetest_explain import ExplainabilityVisualizer
 from wavetest_explain.core.assessment import AssessmentConfig
@@ -17,6 +19,7 @@ from wavetest_explain.data.demo import generate_demo_model
 import numpy as np
 
 from wavetest_app.adapters.explain import make_explain_assessment
+from wavetest_app.audit import record_run
 from wavetest_app.ui import (
     csv_uploader, model_uploader, page_header, project_picker,
     risk_pill, show_recommendations,
@@ -189,6 +192,7 @@ if st.button("▶ Run assessment", type="primary", key="exp_run"):
         assessment = make_explain_assessment(
             project_id=project.project_id, config=cfg,
         )
+        _t0 = time.perf_counter()
         results = assessment.run(
             model=model,
             X_test=X_test, y_test=y_test,
@@ -196,7 +200,20 @@ if st.button("▶ Run assessment", type="primary", key="exp_run"):
             X_train=X_train,
             verbose=False,
         )
+        _dt = time.perf_counter() - _t0
         report_paths = assessment.generate_reports(formats=["json"])
+
+    color = (
+        "ok" if results.accuracy >= 0.85 else
+        "warning" if results.accuracy >= 0.70 else "critical"
+    )
+    comp_status = results.compliance.overall_status if results.compliance else "—"
+    record_run(
+        project=project, module="explainability",
+        status=f"{results.accuracy:.1%}", status_color=color,
+        status_detail=f"Accuracy {results.accuracy:.2%} · Compliance {comp_status}",
+        duration_seconds=_dt,
+    )
 
     st.session_state["exp_assessment"]   = assessment
     st.session_state["exp_results"]      = results

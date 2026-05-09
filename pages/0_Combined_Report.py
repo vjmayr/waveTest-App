@@ -17,6 +17,7 @@ also writes alongside an HTML version and the combined JSON envelope.
 from __future__ import annotations
 
 import json
+import time
 from datetime import datetime
 from pathlib import Path
 
@@ -29,6 +30,7 @@ from wavetest_app.adapters.fairness    import make_fairness_assessment
 from wavetest_app.adapters.explain     import make_explain_assessment
 from wavetest_app.adapters.logging     import make_logging_assessment
 from wavetest_app.adapters.monitoring  import make_monitoring_assessment
+from wavetest_app.audit import record_run
 from wavetest_app.branding import render_cover
 from wavetest_app.config import project_artifacts_dir
 from wavetest_app.ui import (
@@ -313,6 +315,7 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
                 )
                 st.stop()
 
+    _t0 = time.perf_counter()
     progress = st.progress(0.0, text="Initialising…")
     envelopes = []
     panel_status = {}
@@ -517,6 +520,21 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
     cover_pdf.unlink(missing_ok=True)
 
     progress.progress(1.0, text="Done.")
+
+    # Roll up to a single audit-log entry for the combined run. Worst per-
+    # module colour wins so the viewer can flag risky combined runs at a glance.
+    _color_rank = {"ok": 0, "info": 1, "warning": 2, "critical": 3}
+    worst_color = "ok"
+    for _, c in panel_status.values():
+        if _color_rank.get(c, 0) > _color_rank.get(worst_color, 0):
+            worst_color = c
+    record_run(
+        project=project, module="combined",
+        status=combined.summary.overall_status, status_color=worst_color,
+        status_detail=f"Modules: {', '.join(panel_status.keys())}",
+        duration_seconds=time.perf_counter() - _t0,
+    )
+
     st.session_state["cb_combined"]      = combined
     st.session_state["cb_panel_status"]  = panel_status
     st.session_state["cb_pdf_path"]      = pdf_path

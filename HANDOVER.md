@@ -158,12 +158,16 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
    or an OIDC-aware reverse proxy (Caddy or nginx + oauth2-proxy). Add
    Litestream for SQLite backups. Estimate: ~2 days. Touches: `Home.py`,
    `pyproject.toml`, new `deploy/` folder, README.
-2. **Audit log table** for assessment runs (who, when, which project,
-   summary status). Useful when multiple analysts share a server.
-   Estimate: ~3 h.
 
 ### Recently closed
 
+- **Audit log table** — `audit_log` table + Alembic migration
+  (`1403231b5deb_add_audit_log_table`). Each assessment page calls
+  `wavetest_app.audit.record_run(...)` after a successful run, capturing
+  module, status, severity colour, free-form detail, actor (OS login until
+  auth lands), and duration. Project deletion sets the FK to NULL but
+  preserves history via name snapshots. Page `10_Audit_Log.py` is a
+  filterable read-only viewer with CSV export.
 - **Branded title page** — `src/wavetest_app/branding/cover.py` renders a
   one-page reportlab cover (gradient band + project metadata + Article
   chips + brand footer) that gets prepended to the toolchain's PDF via

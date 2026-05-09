@@ -15,7 +15,9 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any, Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, JSON, String, Text
+from sqlalchemy import (
+    Boolean, Date, DateTime, Float, ForeignKey, Index, JSON, String, Text,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from wavetest_app._time import utc_now
@@ -136,3 +138,53 @@ class Project(Base):
 
     def __repr__(self) -> str:
         return f"<Project {self.project_id} {self.project_name!r}>"
+
+
+# ---------------------------------------------------------------------------
+# Audit log — one row per assessment run, survives project deletion
+# ---------------------------------------------------------------------------
+class AuditLog(Base):
+    """One assessment-run record (who/when/what/result)."""
+
+    __tablename__ = "audit_log"
+
+    audit_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+    # FK is SET NULL on project delete so audit history outlives projects.
+    # Snapshots below preserve readable client/project names for the viewer.
+    project_id: Mapped[Optional[str]] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    project_name: Mapped[str] = mapped_column(String(255), nullable=False)
+    client_id: Mapped[Optional[str]] = mapped_column(String(16), nullable=True)
+    client_name: Mapped[str] = mapped_column(String(255), default="")
+
+    # One of: data_quality, bias, explainability, logging, monitoring, combined
+    module: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    run_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, nullable=False,
+    )
+
+    # Module-specific short label (e.g. "GOOD", "HOCH", "85%")
+    status: Mapped[str] = mapped_column(String(64), default="")
+    # Normalised severity for filtering: ok | warning | critical | info
+    status_color: Mapped[str] = mapped_column(String(16), default="info")
+    status_detail: Mapped[str] = mapped_column(Text, default="")
+
+    actor: Mapped[str] = mapped_column(String(64), default="system")
+    duration_seconds: Mapped[Optional[float]] = mapped_column(Float)
+
+    __table_args__ = (
+        Index("ix_audit_log_run_at", "run_at"),
+        Index("ix_audit_log_project_id", "project_id"),
+        Index("ix_audit_log_module", "module"),
+    )
+
+    def __repr__(self) -> str:
+        return (
+            f"<AuditLog {self.audit_id} {self.module} {self.status} "
+            f"@ {self.run_at:%Y-%m-%d %H:%M}>"
+        )

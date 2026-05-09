@@ -10,6 +10,8 @@ Wraps :mod:`wavetest_dataquality` end-to-end:
 
 from __future__ import annotations
 
+import time
+
 import streamlit as st
 from wavetest_dataquality import (
     DataQualityVisualizer,
@@ -18,6 +20,7 @@ from wavetest_dataquality import (
 )
 
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
+from wavetest_app.audit import record_run
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -140,8 +143,23 @@ if run_clicked:
             target_population=target_population,
             thresholds=thresholds,
         )
+        _t0 = time.perf_counter()
         results = assessment.run(df, verbose=False)
+        _dt = time.perf_counter() - _t0
         report_paths = assessment.generate_reports(formats=["json", "csv"])
+
+    score = results.metrics.overall_quality_score
+    color = "ok" if score >= 90 else "warning" if score >= 75 else "critical"
+    record_run(
+        project=project, module="data_quality",
+        status=results.metrics.quality_classification,
+        status_color=color,
+        status_detail=(
+            f"Quality {score:.1f} · Art.10 "
+            f"{'compliant' if results.article_10_compliant else 'gaps'}"
+        ),
+        duration_seconds=_dt,
+    )
 
     # Cache results in session state so re-renders don't lose them
     st.session_state["dq_df"]            = df

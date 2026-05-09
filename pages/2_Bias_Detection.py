@@ -9,11 +9,13 @@ Wraps :mod:`wavetest_fairness` end-to-end.
 from __future__ import annotations
 
 import json as _json
+import time
 
 import streamlit as st
 from wavetest_fairness import FairnessVisualizer, generate_demo_data
 
 from wavetest_app.adapters.fairness import make_fairness_assessment
+from wavetest_app.audit import record_run
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -125,11 +127,27 @@ if st.button("▶ Run assessment", type="primary", key="bias_run"):
             project_id=project.project_id,
             privileged_groups=privileged_groups,
         )
+        _t0 = time.perf_counter()
         results = assessment.run(
             y_true=y_true, y_pred=y_pred,
             sensitive_features=sensitive_features, verbose=False,
         )
+        _dt = time.perf_counter() - _t0
         report_paths = assessment.generate_reports(formats=["json", "csv"])
+
+    risk_v = assessment.overall_risk.value
+    color = (
+        "ok" if risk_v in ("NIEDRIG", "LOW") else
+        "warning" if risk_v in ("MITTEL", "MEDIUM") else "critical"
+    )
+    record_run(
+        project=project, module="bias",
+        status=risk_v, status_color=color,
+        status_detail=(
+            f"{assessment.critical_count}/{len(results)} critical findings"
+        ),
+        duration_seconds=_dt,
+    )
 
     st.session_state["bias_assessment"]   = assessment
     st.session_state["bias_results"]      = results
