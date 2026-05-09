@@ -85,9 +85,21 @@ st.divider()
 st.subheader("Existing project types")
 
 with get_session() as db:
-    types = db.scalars(
-        select(ProjectType).order_by(ProjectType.type_name)
-    ).all()
+    # Snapshot to plain dicts inside the session — accessing ORM column
+    # attributes after the with block exits would raise
+    # DetachedInstanceError (the implicit commit() expires attributes).
+    types = [
+        {
+            "type_id":           pt.type_id,
+            "type_name":         pt.type_name,
+            "description":       pt.description,
+            "standard_services": list(pt.standard_services or []),
+            "is_default":        pt.is_default,
+        }
+        for pt in db.scalars(
+            select(ProjectType).order_by(ProjectType.type_name)
+        ).all()
+    ]
 
 if not types:
     st.info("No project types yet.")
@@ -96,32 +108,32 @@ else:
         default_badge = (
             " <span style='background:#eef1f9; color:#445; font-size:11px; "
             "padding:2px 6px; border-radius:6px; margin-left:6px;'>default</span>"
-            if pt.is_default else ""
+            if pt["is_default"] else ""
         )
         with st.expander(
-            f"{pt.type_id} — {pt.type_name}", expanded=False,
+            f"{pt['type_id']} — {pt['type_name']}", expanded=False,
         ):
             st.markdown(
-                f"**{pt.type_name}**{default_badge}",
+                f"**{pt['type_name']}**{default_badge}",
                 unsafe_allow_html=True,
             )
-            st.write(pt.description or "_No description._")
-            if pt.standard_services:
+            st.write(pt["description"] or "_No description._")
+            if pt["standard_services"]:
                 st.markdown(
                     "**Standard services**\n"
-                    + "\n".join(f"- {svc}" for svc in pt.standard_services)
+                    + "\n".join(f"- {svc}" for svc in pt["standard_services"])
                 )
 
-            if pt.is_default:
+            if pt["is_default"]:
                 st.caption("⚠ Default project types cannot be deleted.")
             else:
                 if st.button(
-                    "Delete", key=f"del_pt_{pt.type_id}",
-                    help=f"Delete project type {pt.type_id}",
+                    "Delete", key=f"del_pt_{pt['type_id']}",
+                    help=f"Delete project type {pt['type_id']}",
                 ):
                     with get_session() as db:
-                        target = db.get(ProjectType, pt.type_id)
+                        target = db.get(ProjectType, pt["type_id"])
                         if target:
                             db.delete(target)
-                    st.success(f"Deleted `{pt.type_id}`.")
+                    st.success(f"Deleted `{pt['type_id']}`.")
                     st.rerun()

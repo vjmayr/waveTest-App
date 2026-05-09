@@ -58,9 +58,12 @@ def project_picker(
             .options(joinedload(Project.client))
             .order_by(Project.created_date.desc())
         ).all()
-        # Detach so the caller can use the objects after the session closes
-        for r in rows:
-            db.expunge(r)
+        # Detach Projects AND their joinedload-loaded Clients before the
+        # context manager's commit() expires them. expunge() is per-instance
+        # and does not cascade through relationships, so per-row expunge()
+        # would leave Clients attached → DetachedInstanceError on first
+        # access of p.client.* after the session closes.
+        db.expunge_all()
 
     if not rows:
         st.sidebar.warning(
