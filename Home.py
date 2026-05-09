@@ -1,10 +1,10 @@
 """
-Home.py — wavetest-app landing page + login gate
-====================================================
+Home.py — wavetest-app entry: login gate + sidebar navigation
+================================================================
 
-Routes the unauthenticated user to a sign-in form and, on success, shows
-the operator console (toolchain status banner + client/project tree).
-Run with::
+Holds the auth gate, builds the sidebar navigation grouped into
+**Modules** (assessments) and **Admin** (CRUD + audit log), and
+runs the selected page. Run with::
 
     streamlit run Home.py
 """
@@ -31,8 +31,8 @@ st.set_page_config(
 init_db()
 
 # ---------------------------------------------------------------------------
-# Login gate — every other page also calls require_login(), but the form
-# itself only renders here on the Home page.
+# Login gate — every gated page also calls require_login(), but the form
+# itself only renders here.
 # ---------------------------------------------------------------------------
 authenticator = get_authenticator()
 authenticator.login(location="main")
@@ -49,27 +49,21 @@ if auth_status is None:
         "Sign in to continue",
     )
     st.info(
-        "Sign in to access the EU AI Act assessment toolchain. "
+        "Sign in to access the EU AI Act Technical Compliance Toolkit. "
         "Need an account? Ask an admin to run "
         "`python scripts/auth_add_user.py`."
     )
     st.stop()
 
 # ---------------------------------------------------------------------------
-# Authenticated — render dashboard
+# Authenticated — sidebar identity + logout, then build navigation
 # ---------------------------------------------------------------------------
 authenticator.logout(location="sidebar")
 st.sidebar.caption(f"Signed in as **{st.session_state.get('name', '')}**")
 
-page_header(
-    "🌊 waveTest — Operator Console",
-    "Technical Compliance Toolkit for high-risk AI systems · "
-    "covers Art. 10, 12 fully and 13 / 15 / 61 / 72 partially "
-    "(see README for scope)",
-)
 
 # ---------------------------------------------------------------------------
-# Toolchain status banner
+# Home dashboard (rendered when navigation lands on the Home page)
 # ---------------------------------------------------------------------------
 TOOLCHAIN_PACKAGES = [
     ("wavetest_fairness",    "Bias Detection (Art. 10 / 13 / 61)"),
@@ -100,107 +94,154 @@ def _toolchain_status() -> list[dict[str, Any]]:
     return rows
 
 
-with st.expander("Toolchain status", expanded=False):
-    rows = _toolchain_status()
-    st.dataframe(rows, hide_index=True, use_container_width=True)
-    if any(r["Installed"] == "❌" for r in rows):
-        st.warning(
-            "One or more wavetest_* packages are missing. Run "
-            "`./scripts/install_toolchain.sh` to install them editable from "
-            "your RAI-TOOLCHAIN checkout."
-        )
-
-# ---------------------------------------------------------------------------
-# Database overview
-# ---------------------------------------------------------------------------
-with get_session() as db:
-    counts = {
-        "clients":       db.scalar(select(func.count()).select_from(Client))      or 0,
-        "systems":       db.scalar(select(func.count()).select_from(System))      or 0,
-        "projects":      db.scalar(select(func.count()).select_from(Project))     or 0,
-        "project_types": db.scalar(select(func.count()).select_from(ProjectType)) or 0,
-    }
-    clients = db.scalars(
-        select(Client)
-        .options(joinedload(Client.systems), joinedload(Client.projects))
-        .order_by(Client.created_date.desc())
-    ).unique().all()
-    # Detach Client rows + their joinedload-loaded systems/projects so the
-    # iteration below survives the implicit commit (see helpers.py for the
-    # same fix in project_picker).
-    db.expunge_all()
-
-c1, c2, c3, c4 = st.columns(4)
-c1.metric("Clients",       counts["clients"])
-c2.metric("Systems",       counts["systems"])
-c3.metric("Projects",      counts["projects"])
-c4.metric("Project types", counts["project_types"])
-
-st.divider()
-
-# ---------------------------------------------------------------------------
-# Client / project tree
-# ---------------------------------------------------------------------------
-if not clients:
-    st.info(
-        "**Database is empty.** Seed it from your existing waveImpact Console:\n\n"
-        "```bash\n"
-        "python scripts/import_console_json.py\n"
-        "```\n\n"
-        "Then refresh this page."
+def home_page() -> None:
+    page_header(
+        "🌊 waveTest — Operator Console",
+        "Technical Compliance Toolkit for high-risk AI systems · "
+        "covers Art. 9, 10, 12, 14, 15, 73, 86 fully and "
+        "13 / 61 / 72 partially (see README for scope)",
     )
-else:
-    st.subheader("Clients & projects")
-    for client in clients:
-        with st.expander(
-            f"🏢 {client.company_name} ({client.client_id}) · "
-            f"{len(client.systems)} system(s) · {len(client.projects)} project(s)",
-            expanded=False,
-        ):
-            cols = st.columns([1, 2, 2])
-            cols[0].markdown(f"**Country**\n\n{client.country or '—'}")
-            cols[1].markdown(
-                f"**Languages**\n\n{', '.join(client.languages) if client.languages else '—'}"
-            )
-            cols[2].markdown(
-                f"**Folder**\n\n`{client.folder_path or '—'}`"
+
+    with st.expander("Toolchain status", expanded=False):
+        rows = _toolchain_status()
+        st.dataframe(rows, hide_index=True, use_container_width=True)
+        if any(r["Installed"] == "❌" for r in rows):
+            st.warning(
+                "One or more wavetest_* packages are missing. Run "
+                "`./scripts/install_toolchain.sh` to install them editable from "
+                "your RAI-TOOLCHAIN checkout."
             )
 
-            if client.systems:
-                st.markdown("**Systems:**")
-                st.dataframe(
-                    [
-                        {
-                            "ID": s.system_id,
-                            "Name": s.system_name,
-                            "Description": s.description[:80] or "—",
-                            "Classified": s.classification_date.strftime("%Y-%m-%d")
-                                          if s.classification_date else "—",
-                        }
-                        for s in client.systems
-                    ],
-                    hide_index=True, use_container_width=True,
+    # ---------- DB overview
+    with get_session() as db:
+        counts = {
+            "clients":       db.scalar(select(func.count()).select_from(Client))      or 0,
+            "systems":       db.scalar(select(func.count()).select_from(System))      or 0,
+            "projects":      db.scalar(select(func.count()).select_from(Project))     or 0,
+            "project_types": db.scalar(select(func.count()).select_from(ProjectType)) or 0,
+        }
+        clients = db.scalars(
+            select(Client)
+            .options(joinedload(Client.systems), joinedload(Client.projects))
+            .order_by(Client.created_date.desc())
+        ).unique().all()
+        db.expunge_all()
+
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Clients",       counts["clients"])
+    c2.metric("Systems",       counts["systems"])
+    c3.metric("Projects",      counts["projects"])
+    c4.metric("Project types", counts["project_types"])
+
+    st.divider()
+
+    # ---------- Client / project tree
+    if not clients:
+        st.info(
+            "**Database is empty.** Seed it from your existing waveImpact Console:\n\n"
+            "```bash\n"
+            "python scripts/import_console_json.py\n"
+            "```\n\n"
+            "Then refresh this page."
+        )
+    else:
+        st.subheader("Clients & projects")
+        for client in clients:
+            with st.expander(
+                f"🏢 {client.company_name} ({client.client_id}) · "
+                f"{len(client.systems)} system(s) · {len(client.projects)} project(s)",
+                expanded=False,
+            ):
+                cols = st.columns([1, 2, 2])
+                cols[0].markdown(f"**Country**\n\n{client.country or '—'}")
+                cols[1].markdown(
+                    f"**Languages**\n\n{', '.join(client.languages) if client.languages else '—'}"
+                )
+                cols[2].markdown(
+                    f"**Folder**\n\n`{client.folder_path or '—'}`"
                 )
 
-            if client.projects:
-                st.markdown("**Projects:**")
-                st.dataframe(
-                    [
-                        {
-                            "ID": p.project_id,
-                            "Name": p.project_name,
-                            "Type": p.project_type or "—",
-                            "Status": p.status,
-                            "Started": p.start_date.isoformat() if p.start_date else "—",
-                        }
-                        for p in client.projects
-                    ],
-                    hide_index=True, use_container_width=True,
-                )
+                if client.systems:
+                    st.markdown("**Systems:**")
+                    st.dataframe(
+                        [
+                            {
+                                "ID": s.system_id,
+                                "Name": s.system_name,
+                                "Description": s.description[:80] or "—",
+                                "Classified": s.classification_date.strftime("%Y-%m-%d")
+                                              if s.classification_date else "—",
+                            }
+                            for s in client.systems
+                        ],
+                        hide_index=True, use_container_width=True,
+                    )
 
-st.divider()
-st.caption(
-    "Use the page navigation on the left to run individual assessments. "
-    "Each assessment writes its artefacts to `artifacts/<client>/<project>/` and "
-    "stays linked to the project in the database."
+                if client.projects:
+                    st.markdown("**Projects:**")
+                    st.dataframe(
+                        [
+                            {
+                                "ID": p.project_id,
+                                "Name": p.project_name,
+                                "Type": p.project_type or "—",
+                                "Status": p.status,
+                                "Started": p.start_date.isoformat() if p.start_date else "—",
+                            }
+                            for p in client.projects
+                        ],
+                        hide_index=True, use_container_width=True,
+                    )
+
+    st.divider()
+    st.caption(
+        "Use the sidebar on the left to run individual assessments. "
+        "Each assessment writes its artefacts to `artifacts/<client>/<project>/` and "
+        "stays linked to the project in the database."
+    )
+
+
+# ---------------------------------------------------------------------------
+# Sidebar navigation — Modules first, then an Admin sub-section.
+# ---------------------------------------------------------------------------
+nav = st.navigation(
+    {
+        "": [
+            st.Page(home_page, title="Home", icon="🌊", default=True),
+        ],
+        "Modules": [
+            st.Page("pages/0_Combined_Report.py",
+                    title="Combined Report",       icon="🧾"),
+            st.Page("pages/1_Data_Quality.py",
+                    title="Data Quality",          icon="📊"),
+            st.Page("pages/2_Bias_Detection.py",
+                    title="Bias Detection",        icon="⚖️"),
+            st.Page("pages/3_Explainability.py",
+                    title="Explainability",        icon="🔍"),
+            st.Page("pages/4_Logging_Framework.py",
+                    title="Logging Framework",     icon="📝"),
+            st.Page("pages/5_Performance_Monitoring.py",
+                    title="Performance Monitoring", icon="📈"),
+            st.Page("pages/11_Risk_Management.py",
+                    title="Risk Register",         icon="🛡"),
+            st.Page("pages/12_Human_Oversight.py",
+                    title="Human Oversight",       icon="👁"),
+            st.Page("pages/13_Cybersecurity.py",
+                    title="Cybersecurity",         icon="🔐"),
+            st.Page("pages/14_Sustainability.py",
+                    title="Sustainability",        icon="🌱"),
+            st.Page("pages/15_Incidents.py",
+                    title="Incidents",             icon="🚨"),
+            st.Page("pages/16_Right_To_Explanation.py",
+                    title="Right to Explanation",  icon="📨"),
+        ],
+        "Admin": [
+            st.Page("pages/6_Clients.py",       title="Clients",       icon="🏢"),
+            st.Page("pages/7_Systems.py",       title="Systems",       icon="🤖"),
+            st.Page("pages/8_Projects.py",      title="Projects",      icon="📋"),
+            st.Page("pages/9_Project_Types.py", title="Project Types", icon="🗂"),
+            st.Page("pages/10_Audit_Log.py",    title="Audit Log",     icon="📜"),
+        ],
+    }
 )
+nav.run()
