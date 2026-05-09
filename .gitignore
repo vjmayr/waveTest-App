@@ -22,6 +22,9 @@ env/
 data/
 artifacts/
 
+# Auth — never check in real user credentials
+auth/users.yaml
+
 # IDE
 .idea/
 .vscode/

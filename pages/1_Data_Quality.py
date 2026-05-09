@@ -21,6 +21,7 @@ from wavetest_dataquality import (
 
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
 from wavetest_app.audit import record_run
+from wavetest_app.auth import require_login
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -30,6 +31,8 @@ st.set_page_config(
     page_icon="📊",
     layout="wide",
 )
+
+require_login()
 
 page_header(
     "📊 Data Quality Assessment",

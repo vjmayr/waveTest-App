@@ -12,6 +12,7 @@ import streamlit as st
 from sqlalchemy import select
 
 from wavetest_app._time import utc_now
+from wavetest_app.auth import require_login
 from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import Client
 from wavetest_app.db.session import get_session
@@ -20,6 +21,8 @@ from wavetest_app.ui import page_header
 st.set_page_config(
     page_title="Clients · waveTest", page_icon="🏢", layout="wide",
 )
+
+require_login()
 
 page_header(
     "🏢 Clients",

@@ -60,11 +60,15 @@ alembic upgrade head
 # 5. (Optional) Import your existing waveImpact_ClientManagement/*.json data
 python scripts/import_console_json.py --toolchain ~/Documents/GitHub/RAI-TOOLCHAIN
 
-# 6. Run the app
+# 6. Bootstrap the first user (auth/users.yaml is gitignored)
+python scripts/auth_add_user.py
+
+# 7. Run the app
 streamlit run Home.py
 ```
 
-Streamlit serves on `http://localhost:8501` by default.
+Streamlit serves on `http://localhost:8501` by default. The Home page renders
+a login form; every other page is gated by the same auth cookie.
 
 ## Running tests
 
@@ -97,15 +101,38 @@ If you have an existing pre-Alembic database, stamp it once:
 alembic stamp head
 ```
 
+## Authentication
+
+`streamlit-authenticator` gates every page. Credentials live in `auth/users.yaml`
+(gitignored — never commit) with bcrypt-hashed passwords and a JWT cookie key.
+
+**Add a user:**
+
+```bash
+python scripts/auth_add_user.py
+# or non-interactively:
+python scripts/auth_add_user.py --username jdoe --email jdoe@example.com \
+    --name "John Doe" --password 's3cr3t'
+```
+
+The first run generates a random `cookie.key` and writes the file with mode
+`0600`. Re-run to add more users; pass `--force` to overwrite an existing one.
+
+**After editing the YAML, restart Streamlit** so the cached `Authenticate`
+instance picks up the new credentials.
+
+The authenticated username is automatically captured in the `audit_log.actor`
+column for every assessment run.
+
 ## Multi-analyst deployment (planned)
 
 When deploying to a shared server:
 
 1. Move SQLite DB to a persistent volume; configure backups via [Litestream](https://litestream.io)
-2. Add auth — recommended: [streamlit-authenticator](https://github.com/mkhorasani/Streamlit-Authenticator) or a reverse proxy (nginx + OIDC)
-3. Mount the `artifacts/` directory on a shared volume so all analysts see the same outputs
+2. Mount the `artifacts/` directory on a shared volume so all analysts see the same outputs
+3. Optionally swap the in-app auth for an OIDC reverse proxy (Caddy / nginx + oauth2-proxy) if SSO is required
 
-These are not in scope for the initial scaffold but the architecture is designed for them.
+These are not in scope for the localhost-only scaffold but the architecture is designed for them.
 
 ---
 

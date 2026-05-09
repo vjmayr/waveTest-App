@@ -1,0 +1,29 @@
+# Auth credentials for wavetest-app
+# ====================================
+#
+# Bootstrap a real users.yaml in this directory by running
+#   python scripts/auth_add_user.py
+#
+# auth/users.yaml is gitignored — do NOT commit real credentials.
+# This .example file is a template showing the layout streamlit-authenticator
+# expects. Passwords here are placeholders, not real hashes.
+
+cookie:
+  name: wavetest_auth
+  # Generate a random key for production: python -c "import secrets; print(secrets.token_hex(32))"
+  key: REPLACE_ME_WITH_RANDOM_TOKEN_HEX_32
+  expiry_days: 30
+
+credentials:
+  usernames:
+    jdoe:
+      email: jdoe@example.com
+      first_name: John
+      last_name: Doe
+      # bcrypt hash of the user's password — generate via Hasher.hash(...)
+      # or by running scripts/auth_add_user.py
+      password: $2b$12$REPLACE_WITH_A_REAL_BCRYPT_HASH
+      logged_in: false
+      failed_login_attempts: 0
+      roles:
+        - analyst

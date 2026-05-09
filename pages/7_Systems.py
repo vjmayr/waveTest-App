@@ -14,6 +14,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from wavetest_app._time import utc_now
+from wavetest_app.auth import require_login
 from wavetest_app.classification import (
     ENTITY_TYPES,
     HIGH_RISK_CATEGORIES,
@@ -29,6 +30,8 @@ from wavetest_app.ui import page_header
 st.set_page_config(
     page_title="Systems · waveTest", page_icon="🤖", layout="wide",
 )
+
+require_login()
 
 page_header(
     "🤖 AI Systems",

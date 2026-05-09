@@ -21,6 +21,7 @@ from wavetest_logging import (
 
 from wavetest_app.adapters.logging import make_logging_assessment
 from wavetest_app.audit import record_run
+from wavetest_app.auth import require_login
 from wavetest_app.ui import page_header, project_picker, risk_pill, show_recommendations
 
 st.set_page_config(
@@ -28,6 +29,8 @@ st.set_page_config(
     page_icon="📝",
     layout="wide",
 )
+
+require_login()
 
 page_header(
     "📝 Logging Framework Evaluation",

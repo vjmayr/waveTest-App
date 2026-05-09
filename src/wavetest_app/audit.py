@@ -39,7 +39,22 @@ StatusColor = Literal["ok", "warning", "critical", "info"]
 
 
 def _current_actor() -> str:
-    """Best-effort identity until real auth lands."""
+    """Identity of the analyst running the assessment.
+
+    Resolution order:
+    1. The authenticated Streamlit user (set by ``wavetest_app.auth``).
+    2. The OS login (``$USER`` / ``$USERNAME``) — only meaningful for CLI
+       scripts that bypass the UI; pre-auth pages used to fall back here.
+    3. ``"system"`` if nothing else is available.
+    """
+    try:
+        from wavetest_app.auth import current_username
+        username = current_username()
+        if username:
+            return username
+    except Exception:
+        # Streamlit not running (CLI tests/scripts), auth.yaml missing, etc.
+        pass
     return (
         os.environ.get("USER")
         or os.environ.get("USERNAME")

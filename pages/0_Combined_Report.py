@@ -31,6 +31,7 @@ from wavetest_app.adapters.explain     import make_explain_assessment
 from wavetest_app.adapters.logging     import make_logging_assessment
 from wavetest_app.adapters.monitoring  import make_monitoring_assessment
 from wavetest_app.audit import record_run
+from wavetest_app.auth import require_login
 from wavetest_app.branding import render_cover
 from wavetest_app.config import project_artifacts_dir
 from wavetest_app.ui import (
@@ -47,6 +48,8 @@ st.set_page_config(
     page_icon="🧾",
     layout="wide",
 )
+
+require_login()
 
 page_header(
     "🧾 Combined Compliance Report",

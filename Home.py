@@ -1,9 +1,10 @@
 """
-Home.py — wavetest-app landing page
-======================================
+Home.py — wavetest-app landing page + login gate
+====================================================
 
-Lists every client + project in the SQLite database and confirms that the
-six waveTest toolchain packages are importable. Run with::
+Routes the unauthenticated user to a sign-in form and, on success, shows
+the operator console (toolchain status banner + client/project tree).
+Run with::
 
     streamlit run Home.py
 """
@@ -12,9 +13,10 @@ import importlib
 from typing import Any
 
 import streamlit as st
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.orm import joinedload
 
+from wavetest_app.auth import get_authenticator
 from wavetest_app.db.models import Client, Project, ProjectType, System
 from wavetest_app.db.session import get_session, init_db
 from wavetest_app.ui import page_header
@@ -27,6 +29,37 @@ st.set_page_config(
 
 # Make sure tables exist on first launch
 init_db()
+
+# ---------------------------------------------------------------------------
+# Login gate — every other page also calls require_login(), but the form
+# itself only renders here on the Home page.
+# ---------------------------------------------------------------------------
+authenticator = get_authenticator()
+authenticator.login(location="main")
+
+auth_status = st.session_state.get("authentication_status")
+
+if auth_status is False:
+    st.error("Username or password is incorrect.")
+    st.stop()
+
+if auth_status is None:
+    page_header(
+        "🌊 waveTest — Operator Console",
+        "Sign in to continue",
+    )
+    st.info(
+        "Sign in to access the EU AI Act assessment toolchain. "
+        "Need an account? Ask an admin to run "
+        "`python scripts/auth_add_user.py`."
+    )
+    st.stop()
+
+# ---------------------------------------------------------------------------
+# Authenticated — render dashboard
+# ---------------------------------------------------------------------------
+authenticator.logout(location="sidebar")
+st.sidebar.caption(f"Signed in as **{st.session_state.get('name', '')}**")
 
 page_header(
     "🌊 waveTest — Operator Console",
@@ -79,21 +112,21 @@ with st.expander("Toolchain status", expanded=False):
 # Database overview
 # ---------------------------------------------------------------------------
 with get_session() as db:
-    n_clients  = db.scalar(select(Client).with_only_columns(Client.client_id).order_by(None).limit(1)) is not None
     counts = {
-        "clients":       db.scalar(select(__import__("sqlalchemy").func.count()).select_from(Client))         or 0,
-        "systems":       db.scalar(select(__import__("sqlalchemy").func.count()).select_from(System))         or 0,
-        "projects":      db.scalar(select(__import__("sqlalchemy").func.count()).select_from(Project))        or 0,
-        "project_types": db.scalar(select(__import__("sqlalchemy").func.count()).select_from(ProjectType))    or 0,
+        "clients":       db.scalar(select(func.count()).select_from(Client))      or 0,
+        "systems":       db.scalar(select(func.count()).select_from(System))      or 0,
+        "projects":      db.scalar(select(func.count()).select_from(Project))     or 0,
+        "project_types": db.scalar(select(func.count()).select_from(ProjectType)) or 0,
     }
     clients = db.scalars(
         select(Client)
         .options(joinedload(Client.systems), joinedload(Client.projects))
         .order_by(Client.created_date.desc())
     ).unique().all()
-    # Detach so we can read them after the session closes
-    for c in clients:
-        db.expunge(c)
+    # Detach Client rows + their joinedload-loaded systems/projects so the
+    # iteration below survives the implicit commit (see helpers.py for the
+    # same fix in project_picker).
+    db.expunge_all()
 
 c1, c2, c3, c4 = st.columns(4)
 c1.metric("Clients",       counts["clients"])

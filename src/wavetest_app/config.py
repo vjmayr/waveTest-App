@@ -29,6 +29,13 @@ DB_URL = os.environ.get(
 )
 
 # ---------------------------------------------------------------------------
+# Auth — credentials YAML lives in auth/users.yaml (gitignored)
+# ---------------------------------------------------------------------------
+AUTH_USERS_PATH = Path(
+    os.environ.get("WAVETEST_AUTH_USERS_PATH", REPO_ROOT / "auth" / "users.yaml")
+)
+
+# ---------------------------------------------------------------------------
 # Toolchain checkout — used by scripts/install_toolchain.sh and the JSON import
 # ---------------------------------------------------------------------------
 DEFAULT_TOOLCHAIN_ROOT = Path(

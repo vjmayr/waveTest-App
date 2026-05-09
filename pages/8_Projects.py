@@ -16,6 +16,7 @@ from sqlalchemy import select
 from sqlalchemy.orm import joinedload
 
 from wavetest_app._time import utc_now
+from wavetest_app.auth import require_login
 from wavetest_app.config import project_artifacts_dir
 from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import Client, Project, ProjectType
@@ -25,6 +26,8 @@ from wavetest_app.ui import page_header
 st.set_page_config(
     page_title="Projects · waveTest", page_icon="📋", layout="wide",
 )
+
+require_login()
 
 page_header(
     "📋 Projects",
