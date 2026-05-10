@@ -28,6 +28,9 @@ requirements, example CSVs, and how to read the results.
    - [4.9 Sustainability](#49-sustainability--voluntary)
    - [4.10 Incidents](#410-incidents--art-73)
    - [4.11 Right to Explanation](#411-right-to-explanation--art-86)
+   - [4.12 Model Card](#412-model-card--art-11--13)
+   - [4.13 Captum](#413-captum--art-13--cv-attribution)
+   - [4.14 TextAttack](#414-textattack--art-15--nlp-robustness)
 5. [Combined Report](#5-combined-report)
 6. [Audit Log](#6-audit-log)
 7. [Where files live](#7-where-files-live)
@@ -47,8 +50,16 @@ You'll see a **login form** on the Home page. Enter your username and
 password. If you don't have an account, ask the admin to run
 `python scripts/auth_add_user.py` for you.
 
-After login, the sidebar shows **Signed in as <Your Name>** and a logout
-button. The same identity is automatically stamped onto every assessment
+After login the sidebar shows **Signed in as &lt;Your Name&gt;** plus a
+logout button, and splits into two grouped sections:
+
+- **Modules** — the assessments and governance pages. Anyone with the
+  `analyst` role can use them.
+- **Admin** — Clients / Systems / Projects / Project Types / Audit Log.
+  Requires the `admin` role; non-admins see a polite "this page needs
+  the admin role" notice.
+
+The authenticated identity is automatically stamped onto every assessment
 run in the audit log — so when a customer asks "who ran this report?",
 the answer is in the database.
 
@@ -57,6 +68,11 @@ the answer is in the database.
 On the Home page, expand the **Toolchain status** panel. All six
 `wavetest_*` packages should show ✓. If any show ❌, an admin needs to
 run `./scripts/install_toolchain.sh` before you can run that module.
+
+The newer modules (Captum, TextAttack, Evidently, ART, Fairlearn,
+Great Expectations, ydata-profiling, CodeCarbon, LIME) are pulled in
+via `pip install -e .` and don't appear in the toolchain-status panel —
+if one fails to import, the page shows a polite error inline.
 
 ---
 
@@ -223,6 +239,19 @@ The **GDPR Art. 9** panel lists columns whose names suggest sensitive
 data. Even one match is a conversation with the client about lawful
 basis for processing.
 
+**Optional deep dives** (two extra expanders below the report):
+
+- **📋 Extended profile (ydata-profiling)** — pick a sample size,
+  click *Run* and the page produces a full automatic dataset profile
+  (column types, distributions, correlations, alerts) as a downloadable
+  HTML. Sample because the full report is slow on >5 000 rows; the
+  full dataset is still used for the metrics above.
+- **✅ Great Expectations validation** — runs a canned suite (≥95 %
+  non-null on every column, every numeric column within its observed
+  min / max) and shows pass / fail per expectation. For a
+  project-specific suite, define expectations on the toolchain side
+  and re-import.
+
 ---
 
 ### 4.2 Bias Detection — Art. 10 / 13 / 61
@@ -292,6 +321,16 @@ The **dashboard** plots distributions and metric-vs-threshold bars; the
 **protected-attribute distributions** plot is useful evidence that the
 sample wasn't trivially imbalanced.
 
+**📊 Per-group metrics (Fairlearn)** — expander below the dashboard.
+AIF360 gives you the risk level; Fairlearn shows what's actually
+happening per group. One tab per protected attribute, each with a
+`MetricFrame` table of accuracy / selection rate / true-positive rate /
+false-positive rate per subgroup, plus the **demographic parity
+difference** and **equalized odds difference** numbers underneath.
+This is what you'll point at in the client conversation when you say
+"the model picks group X 40 % of the time and group Y 16 % of the time"
+— much more concrete than a single risk pill.
+
 ---
 
 ### 4.3 Explainability — Art. 13
@@ -348,6 +387,18 @@ model's behaviour is explained by just 3 features"). **Local case
 explanations** lists each scored test sample with its prediction,
 confidence, and a borderline flag — borderline cases are the natural
 audit targets for a domain expert.
+
+**🔍 LIME local explanations** — expander below the SHAP local-cases
+table. Builds a `LimeTabularExplainer` from the training data
+(or test data as fallback), picks up to 3 borderline cases, and shows
+each one as a small (feature-range, weight) table. LIME is often more
+client-readable than raw SHAP — the discretised feature ranges
+(e.g. `100 <= income <= 250`) translate directly into plain language
+in the customer letter. Requires `predict_proba()` on the uploaded
+model; if missing, the expander shows a polite "not available" note.
+
+For deeper PyTorch attribution (Integrated Gradients), see the
+separate **🖼 Captum** module on its own page.
 
 ---
 
@@ -444,6 +495,15 @@ and **outlier rates** tables list per-feature stats — copy the worst
 rows directly into the customer's monitoring report. The **daily
 metrics** table + **trend** caption give a 14-day view: a downward trend
 is the early-warning signal you want to surface.
+
+**📊 Evidently AI — drift HTML report** — expander below the
+recommendations. Splits the timeline at the median timestamp into a
+reference half + a current half, runs Evidently's `DataDriftPreset`,
+and offers a self-contained HTML download. The report has per-feature
+distribution plots, KS / chi-square test results, and a numerical
+summary — the kind of thing you forward to a customer's data-science
+team rather than carry into a compliance meeting. Heavy file
+(~5 MB on demo data because Plotly is inlined for offline viewing).
 
 ---
 
@@ -583,6 +643,34 @@ generic infosec team. Bring those up in the threat-model conversation
 explicitly — they're what the EU AI Act adds beyond standard ISO 27001
 hygiene.
 
+**🎯 Active adversarial testing (IBM ART)** — expander below the plan
+download. Where the questionnaire asks "do you have controls against
+inference-time evasion?", this expander **runs an actual attack** to
+show what happens when there aren't any. Workflow:
+
+1. Upload the customer's pickled scikit-learn model + a small test CSV.
+2. Pick the number of samples (1–50; HopSkipJump needs many model
+   queries per sample, so stay small while exploring).
+3. Click *Run HopSkipJump attack*.
+4. The page wraps the model with `art.estimators.SklearnClassifier`,
+   runs HopSkipJump (decision-based, blackbox — needs only `.predict()`,
+   no gradients, no PyTorch), and reports four pills:
+
+   | Pill | Meaning |
+   | --- | --- |
+   | **Original accuracy** | Baseline accuracy on the unperturbed test rows |
+   | **Adversarial accuracy** | Accuracy after the attack — if this drops to ~0, the model has no defence |
+   | **Attack success rate** | Fraction of samples where the predicted class flipped. <20 % ok, <50 % warning, ≥50 % critical |
+   | **Mean L2 perturbation** | Average size of the adversarial change in feature space — small numbers = the model can be fooled with subtle inputs |
+
+The audit log captures every run under module `cybersecurity` with
+the success rate in `status_detail`, so the trend across versions is
+visible from the Audit Log page.
+
+**When to run it:** any time the client claims they have adversarial-
+input defences. If HopSkipJump still flips ≥50 % of predictions in a
+few seconds, the defences aren't working.
+
 ---
 
 ### 4.9 Sustainability — voluntary
@@ -603,7 +691,9 @@ ISO/IEC 42001 ask for these numbers anyway.
   small tabular models 0.0001–0.001 kWh/1k; LLM serving 0.1–1.0 kWh/1k.
 - **Monthly predictions** (count) — production volume.
 - **Deployment region** — picks a default carbon intensity (gCO₂eq/kWh).
-  ~16 regions pre-loaded with public 2024 baselines.
+  **213 countries** sourced from CodeCarbon's `global_energy_mix.json`
+  plus two curated aggregates (EU-Average, Global-Average) and a
+  *Custom* slot for region-spanning deployments.
 - **Carbon intensity** — overridable if the customer has a better figure.
 
 **Computed automatically:**
@@ -622,6 +712,21 @@ ISO/IEC 42001 ask for these numbers anyway.
 
 **Tip:** even sketchy numbers are better than none for CSRD reporting.
 Get the order of magnitude right first; refine over time.
+
+**For an authoritative training-time number**, ask the customer to wrap
+their training script with [CodeCarbon's](https://codecarbon.io)
+`EmissionsTracker`:
+
+```python
+from codecarbon import EmissionsTracker
+with EmissionsTracker(project_name="cardio-v2",
+                      country_iso_code="DEU") as tracker:
+    train_model(...)
+# tracker writes emissions.csv with kWh + kg CO₂eq
+```
+
+The page's Markdown export already includes this snippet for the
+customer.
 
 ---
 
@@ -730,6 +835,127 @@ client's national regulator publishes a stricter timeline, override the
 
 ---
 
+### 4.12 Model Card — Art. 11 + 13
+
+**What it does:** A per-project Model Card following Google's
+published schema. Fulfils EU AI Act Article 11 (technical
+documentation) and a chunk of Article 13 (deployer transparency) at
+the same time — both regulators ask for what's already on a Model
+Card. The deliverable is two files: a **Markdown** version (for the
+customer file) and a **JSON** version (for downstream toolchains —
+interchangeable with output from Google's `model-card-toolkit`).
+
+**What you need from the client:** Conversation, not data. Inputs
+mirror the schema:
+
+- **Model details**: name, version, owners, license, citation,
+  references, free-text overview.
+- **Intended use**: primary uses, primary users, **out-of-scope uses**
+  (the most important section for Art. 13 — where the model
+  *shouldn't* be used).
+- **Factors**: subgroups / environments / instrumentation conditions
+  the behaviour might depend on, and which of those were evaluated.
+- **Metrics**: pull headline numbers from the Performance Monitoring,
+  Bias Detection, and Explainability runs.
+- **Data**: training-data + evaluation-data summaries.
+- **Ethical considerations** + **caveats** + **recommendations**.
+
+**Workflow:** open the page, fill what you have, save. The form is
+upsert-style — one card per project, edit-in-place. Export Markdown
+or JSON when ready for the customer.
+
+**Why this isn't model-card-toolkit:** Google's official Python
+package isn't installable on Python 3.13 (its build pin is too old).
+The schema is the value — we mirror it field-for-field on a DB row
+and emit the same JSON shape.
+
+---
+
+### 4.13 Captum — Art. 13 / CV attribution
+
+**What it does:** Per-row attribution for **PyTorch** classifiers via
+Captum's Integrated Gradients. Complements SHAP / LIME on the
+Explainability page — same goal (which features drove this
+prediction?), but works on differentiable PyTorch models that the
+SHAP page can't always handle (deep networks, CV models).
+
+**What you need from the client:**
+
+- A **full pickled PyTorch model** (saved with
+  `torch.save(model, path)`, **not** a state dict). Must be a
+  differentiable `nn.Module`.
+- A **numeric test CSV** (no target column needed for attribution).
+
+**Configuration:**
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| Target class index | 1 | Class to attribute toward (1 = positive in binary) |
+| Integration steps | 50 | More steps = smoother attribution, slower |
+
+**How to read the result:**
+
+- **Global feature importance**: per-feature mean absolute
+  attribution across the test rows. The top of this table tells you
+  which inputs matter most overall.
+- **Per-row drill-down**: pick a row index, see each feature's value
+  alongside its signed attribution (positive = pushed toward the
+  target class, negative = pushed away). Useful for explaining a
+  specific borderline decision to a domain expert.
+
+**v0 scope:** tabular input only. Image / CV input (the *Quality
+Inspection* and *Medical Imaging* use cases the website lists) is the
+natural extension — same algorithm, just a different upload widget
+and a heatmap visualisation. Tracked as a follow-up.
+
+---
+
+### 4.14 TextAttack — Art. 15 / NLP robustness
+
+**What it does:** Adversarial evasion against a HuggingFace text
+classifier. The website lists this as the secondary tool for
+**Chatbots** + **Content Moderation** + **Sentiment Analysis** — any
+NLP system with a binary or multi-class label.
+
+**What you need from the client:**
+
+- A **HuggingFace model id** — either a public checkpoint
+  (default: `distilbert-base-uncased-finetuned-sst-2-english` for
+  binary sentiment) or one the customer published privately and gave
+  you read access to.
+- Optionally, a CSV with `text` + `label` columns to attack. If you
+  don't supply one, the page uses a built-in 5-sample demo set.
+
+**Configuration:**
+
+| Setting | Default | Meaning |
+| --- | --- | --- |
+| Attack recipe | TextFoolerJin2019 | Most-cited tabular benchmark. Alternatives: `DeepWordBugGao2018`, `BAEGarg2019`. |
+| Samples to attack | 3 | Each sample takes seconds; stay small while exploring (1–10). |
+
+**How to read the result:**
+
+| Pill | Meaning |
+| --- | --- |
+| **Samples** | Total attacked rows |
+| **Successful attacks** | Rows whose predicted class flipped |
+| **Success rate** | Successful / (Total − Skipped). <20 % ok, <50 % warning, ≥50 % critical |
+| **Skipped (already wrong)** | Rows the model misclassified before any attack — TextAttack ignores these |
+
+The **Per-sample results** table shows the original text alongside the
+adversarial perturbation for every successful attack. Most flips come
+from one or two synonym substitutions, which makes for a striking
+client demo: "your sentiment classifier flips from POSITIVE to
+NEGATIVE when 'fantastic' becomes 'amazing'."
+
+**First-run note:** the chosen HuggingFace model downloads on the
+first run (~250 MB for the default DistilBERT). Subsequent runs hit
+the local cache. NLTK corpora (stopwords, wordnet, etc.) are also
+fetched on first import — the page handles SSL cert workarounds for
+macOS.
+
+---
+
 ## 5. Combined Report
 
 The **🧾 Combined Report** page runs every selected module against the
@@ -817,10 +1043,13 @@ Numeric / enum status labels you'll see, by module:
 | Monitoring | `GOOD`, `WARNING`, `CRITICAL` |
 | Risk Register | `LOW`, `MEDIUM`, `HIGH`, `CRITICAL` (severity × likelihood) |
 | Human Oversight | Compliance percent `0–100%` (Art. 14.4 checkpoint score) |
-| Cybersecurity | Compliance percent `0–100%` (Art. 15(5) checkpoint score) |
+| Cybersecurity | Compliance percent `0–100%` (Art. 15(5) checkpoint) and `ART attack: NN% success` for active runs |
 | Sustainability | Annual `kg CO₂eq` (informational, no threshold) |
 | Incidents | `LOGGED INCxxxx` / `UPDATED INCxxxx` (severity-coloured) |
 | Right to Explanation | `LOGGED RTExxxx` / `UPDATED RTExxxx` (status-coloured) |
+| Model Card | `SAVED <model> v<version>` (info) |
+| Captum | `IG <N> rows` (info) |
+| TextAttack | `<recipe> NN%` success rate (severity-coloured) |
 | Combined | The toolchain's combined `overall_status` string |
 
 ---
@@ -859,6 +1088,64 @@ to fix.
 ### "DetachedInstanceError" or other crash
 Take a screenshot of the full traceback (the URL helps too) and send it
 to the dev team. The fix usually lands within an hour.
+
+### "⛔ This page requires the admin role"
+
+Your account is `analyst`-only. Ask an admin to upgrade you with
+`python scripts/auth_set_role.py --username YOU --role admin`. The
+change takes effect on the next page render — no Streamlit restart.
+
+### Captum: "model loaded but attribution failed"
+
+The most common cause is that the uploaded `.pt` file is a **state dict**
+rather than a full pickled module. `torch.load(...)` returns the dict
+and the page can't call it as a model. Re-save with
+`torch.save(model, "path.pt")` (no `.state_dict()`) and re-upload.
+
+### TextAttack: "Resource 'stopwords' not found" / SSL error
+
+The first import of TextAttack tries to fetch NLTK corpora. On macOS
+the system Python's SSL chain sometimes rejects nltk.org. The page
+retries the download under an unverified context at runtime; if that
+still fails (corporate proxy, offline laptop), open a Python shell
+and run:
+
+```python
+import ssl
+ssl._create_default_https_context = ssl._create_unverified_context
+import nltk
+for pkg in ("stopwords", "wordnet", "punkt", "averaged_perceptron_tagger"):
+    nltk.download(pkg)
+```
+
+Then refresh the page.
+
+### TextAttack: HuggingFace model takes forever to download
+
+First-run downloads can be 200–500 MB and depend on the customer's
+network. The model goes into the local `~/.cache/huggingface/`
+directory; subsequent runs are instant. If you're on a slow link,
+keep the *Samples to attack* number low and run once to warm the cache.
+
+### Evidently report fails on tiny frames
+
+Evidently's `DataDriftPreset` needs enough rows on each side of the
+split to compute a sensible test statistic. If the dataset has fewer
+than ~50 rows total, the page falls back to "comparing the dataset
+against itself" — a degenerate case but it doesn't crash. Ask the
+customer for more monitoring data and re-run.
+
+### Great Expectations validation throws "must be added to the DataContext"
+
+The GE 1.x API changed; if you see this error your wavetest-app is
+running an outdated `pages/1_Data_Quality.py`. Pull the latest from
+`main`. If you're already on latest, send the traceback to the dev team.
+
+### CodeCarbon: "country not found"
+The dropdown shows ISO-3 country codes from CodeCarbon's data file. If
+the customer's deployment region isn't covered (small islands, some
+overseas territories), pick **Custom** and enter the carbon intensity
+the customer's grid operator publishes.
 
 ---
 
