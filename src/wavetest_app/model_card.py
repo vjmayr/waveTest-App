@@ -17,6 +17,8 @@ import json
 from datetime import datetime
 from typing import Any
 
+from wavetest_app._time import utc_now
+
 
 def to_dict(card: dict, *, project, system_classification: str = "") -> dict[str, Any]:
     """Build a Google-schema Model Card dict from a stored card row.
@@ -79,7 +81,7 @@ def to_dict(card: dict, *, project, system_classification: str = "") -> dict[str
             "client_name":  getattr(project.client, "company_name", "")
                             if hasattr(project, "client") and project.client else "",
             "system_classification": system_classification,
-            "exported_at": datetime.utcnow().isoformat(),
+            "exported_at": utc_now().isoformat(),
         },
     }
 

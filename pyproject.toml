@@ -34,6 +34,7 @@ dependencies = [
     "transformers>=4.30",            # HuggingFace models for textattack
     "nltk>=3.8",                     # textattack runtime dependency
     "datasets>=2.14",                # textattack/transformers helper
+    "markdown-pdf>=1.0",             # Markdown → PDF for the manual export
     "setuptools<81",                 # ydata-profiling depends on `pkg_resources`
                                      # which setuptools 81+ removed; pin until
                                      # ydata-profiling drops the legacy import.

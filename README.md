@@ -129,6 +129,28 @@ If you have an existing pre-Alembic database, stamp it once:
 alembic stamp head
 ```
 
+## Building the analyst manual PDF
+
+The Markdown manual at [docs/AUDIT_MANUAL.md](docs/AUDIT_MANUAL.md) is
+the canonical source. Generate the branded PDF locally (we don't run
+this in CI) with:
+
+```bash
+.venv/bin/python scripts/build_manual_pdf.py
+# → docs/AUDIT_MANUAL.pdf
+```
+
+Skip the cover page or pick a different output path:
+
+```bash
+.venv/bin/python scripts/build_manual_pdf.py --no-cover
+.venv/bin/python scripts/build_manual_pdf.py --output /tmp/manual.pdf
+```
+
+Pure Python (markdown-pdf + PyMuPDF + pypdf + reportlab) — no Cairo /
+Pango / wkhtmltopdf system dependencies. Re-run after editing the
+Markdown.
+
 ## Authentication
 
 `streamlit-authenticator` gates every page. Credentials live in `auth/users.yaml`
