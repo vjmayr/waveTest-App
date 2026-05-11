@@ -14,11 +14,26 @@ pytest can exercise it.
 
 from __future__ import annotations
 
+import re
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable, Optional
 
 from wavetest_app.branding.cover import render_cover
+
+# `[label](#anchor)` — in-document fragment links that PyMuPDF's
+# markdown-pdf backend can't resolve because its heading slugifier
+# disagrees with the labels used in AUDIT_MANUAL.md's hand-written TOC
+# (e.g. `## 1. Before you start` produces a different id than
+# `#1-before-you-start`). The PDF gets its own outline-pane TOC via
+# `toc_level`, so we strip the in-document links and keep the label
+# text. External `[label](https://...)` links are untouched.
+_FRAGMENT_LINK_RE = re.compile(r"\[([^\]]+)\]\(#[^)]*\)")
+
+
+def _strip_fragment_links(md_text: str) -> str:
+    """Replace ``[label](#anchor)`` with plain ``label`` (see _FRAGMENT_LINK_RE)."""
+    return _FRAGMENT_LINK_RE.sub(r"\1", md_text)
 
 # Brand CSS injected into the body — keeps tables readable, code blocks
 # distinct, and headings on-brand.
@@ -64,7 +79,10 @@ def render_body(md_text: str, output_path: Path, *, toc_level: int = 3) -> Path:
     pdf.meta["title"] = "waveTest Analyst Manual"
     pdf.meta["author"] = "waveImpact GmbH"
     pdf.meta["creator"] = "wavetest-app · scripts/build_manual_pdf.py"
-    pdf.add_section(Section(md_text, paper_size="A4"), user_css=BRAND_CSS)
+    pdf.add_section(
+        Section(_strip_fragment_links(md_text), paper_size="A4"),
+        user_css=BRAND_CSS,
+    )
     pdf.save(str(output_path))
     return output_path
 

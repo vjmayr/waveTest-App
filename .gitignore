@@ -22,6 +22,9 @@ env/
 data/
 artifacts/
 
+# Generated manual PDF (rebuild with scripts/build_manual_pdf.py)
+docs/*.pdf
+
 # Auth — never check in real user credentials
 auth/users.yaml
 
