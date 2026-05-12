@@ -21,6 +21,7 @@ import numpy as np
 from wavetest_app.adapters.explain import make_explain_assessment
 from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import (
     csv_uploader, model_uploader, page_header, project_picker,
     risk_pill, show_recommendations,
@@ -82,9 +83,21 @@ with st.expander("⚙️ Configure", expanded=True):
         )
 
     st.markdown("**Model + data**")
+    # Surface "Use project inputs" when both sklearn_model + dataset
+    # are uploaded. See INPUT_SPEC.md §Z.
+    project_model_path = load_input(project, "sklearn_model")
+    project_dataset = load_input(project, "dataset")
+    project_dataset_train = load_input(project, "dataset_train")
+    project_ready = project_model_path is not None and project_dataset is not None
+
+    src_opts = []
+    if project_ready:
+        src_opts.append("Use project inputs")
+    src_opts += ["Demo model (synthetic)", "Upload client model"]
     source = st.radio(
         "Source",
-        ["Demo model (synthetic)", "Upload client model"],
+        src_opts,
+        index=0,
         horizontal=True, key="exp_src",
     )
 
@@ -103,7 +116,7 @@ with st.expander("⚙️ Configure", expanded=True):
             n_demo_features = st.number_input(
                 "Demo features", 3, 30, 10, 1, key="exp_df",
             )
-    else:
+    elif source == "Upload client model":
         st.caption(
             "Upload a pickled scikit-learn-style model with `predict()` and "
             "`predict_proba()`, plus a test CSV containing the features and the "
@@ -130,6 +143,15 @@ with st.expander("⚙️ Configure", expanded=True):
             help="Same column layout as the test CSV. If omitted, SHAP uses the "
                  "test data as background.",
         )
+    else:  # Use project inputs
+        st.caption(
+            f"Using project slots — model: `{project_model_path.name}`, "
+            f"test dataset: `{project_dataset.name}`"
+            + (f", training dataset: `{project_dataset_train.name}`"
+               if project_dataset_train is not None else "")
+            + ". Target column is the conventional `y_true`. "
+              "Manage in **Project Inputs**."
+        )
 
 # ---------------------------------------------------------------------------
 # Run
@@ -154,7 +176,35 @@ if st.button("▶ Run assessment", type="primary", key="exp_run"):
             y_test = bundle.y_test
             feature_names = bundle.feature_names
             X_train = bundle.X_train
-    else:
+    elif source == "Use project inputs":
+        import pickle as _pickle
+        import pandas as _pd
+        with st.spinner("Loading project inputs…"):
+            model = _pickle.loads(project_model_path.read_bytes())
+            if not (hasattr(model, "predict")
+                    and hasattr(model, "predict_proba")):
+                st.error(
+                    "Project `sklearn_model` is missing `predict` / "
+                    "`predict_proba`. Re-upload a classifier in **Project Inputs**."
+                )
+                st.stop()
+            test_df = _pd.read_csv(project_dataset)
+            target_col = "y_true"  # convention for project inputs
+            if target_col not in test_df.columns:
+                st.error(
+                    "Project `dataset` is missing a `y_true` column "
+                    "(the canonical target name). See INPUT_SPEC.md §Z."
+                )
+                st.stop()
+            feature_names = [c for c in test_df.columns if c != target_col]
+            X_test = test_df[feature_names].to_numpy()
+            y_test = test_df[target_col].to_numpy()
+            if project_dataset_train is not None:
+                train_df = _pd.read_csv(project_dataset_train)
+                X_train = train_df[feature_names].to_numpy()
+            else:
+                X_train = None
+    else:  # Upload client model
         if uploaded_model is None:
             st.error("Upload a model file first.")
             st.stop()

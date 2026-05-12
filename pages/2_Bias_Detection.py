@@ -17,6 +17,7 @@ from wavetest_fairness import FairnessVisualizer, generate_demo_data
 from wavetest_app.adapters.fairness import make_fairness_assessment
 from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -51,9 +52,17 @@ with st.expander("⚙️ Configure", expanded=True):
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**Data source**")
+        # Surface "Use project inputs" when the project's `dataset` slot
+        # is uploaded. See INPUT_SPEC.md §Z.
+        project_dataset = load_input(project, "dataset")
+        opts = []
+        if project_dataset is not None:
+            opts.append("Use project inputs")
+        opts += ["Demo data (synthetic)", "Upload CSV"]
         source = st.radio(
             "Choose data",
-            ["Demo data (synthetic)", "Upload CSV"],
+            opts,
+            index=0,
             horizontal=True, key="bias_source",
         )
         uploaded_df = None
@@ -65,7 +74,7 @@ with st.expander("⚙️ Configure", expanded=True):
             n_samples = st.number_input(
                 "Sample count", 100, 50_000, 2000, 500, key="bias_n",
             )
-        else:
+        elif source == "Upload CSV":
             uploaded_df = csv_uploader(
                 "Drop a CSV with predictions",
                 key="bias_upload",
@@ -75,19 +84,28 @@ with st.expander("⚙️ Configure", expanded=True):
                     "key in the privileged-groups JSON below."
                 ),
             )
+        else:  # Use project inputs
+            st.caption(
+                f"Using `dataset` slot: `{project_dataset.name}` "
+                f"({project_dataset.stat().st_size:,} B). "
+                "Manage in **Project Inputs**."
+            )
 
     with c2:
         st.markdown("**Privileged groups**")
+        project_priv = load_input(project, "privileged_groups_json")
+        default_priv = (
+            project_priv if project_priv is not None else
+            '{\n'
+            '  "geschlecht":   "M",\n'
+            '  "alter_gruppe": "<30",\n'
+            '  "nationalitaet": "DE",\n'
+            '  "behinderung":  false\n'
+            '}'
+        )
         priv_text = st.text_area(
             "JSON dict mapping protected attribute → privileged value",
-            value=(
-                '{\n'
-                '  "geschlecht":   "M",\n'
-                '  "alter_gruppe": "<30",\n'
-                '  "nationalitaet": "DE",\n'
-                '  "behinderung":  false\n'
-                '}'
-            ),
+            value=default_priv,
             height=140, key="bias_priv",
             help=(
                 "These are the columns on which fairness metrics are computed. "
@@ -105,8 +123,13 @@ if st.button("▶ Run assessment", type="primary", key="bias_run"):
         st.error(f"Privileged groups JSON is invalid: {exc}")
         st.stop()
 
-    if source != "Demo data (synthetic)" and uploaded_df is None:
+    if source == "Upload CSV" and uploaded_df is None:
         st.error("Upload a CSV first or switch to demo data.")
+        st.stop()
+    if source == "Use project inputs" and project_dataset is None:
+        st.error(
+            "No `dataset` uploaded for this project. Go to **Project Inputs**."
+        )
         st.stop()
 
     with audit_assessment(project, "bias"):
@@ -116,16 +139,27 @@ if st.button("▶ Run assessment", type="primary", key="bias_run"):
                     n_samples=int(n_samples), bias_level=bias_level,
                 )
             else:
-                missing = [c for c in privileged_groups if c not in uploaded_df.columns]
+                if source == "Use project inputs":
+                    import pandas as _pd
+                    df_for_bias = _pd.read_csv(project_dataset)
+                    if "y_true" not in df_for_bias.columns or "y_pred" not in df_for_bias.columns:
+                        st.error(
+                            "Project `dataset` slot is missing `y_true` / "
+                            "`y_pred` columns. The Bias module needs both."
+                        )
+                        st.stop()
+                else:
+                    df_for_bias = uploaded_df
+                missing = [c for c in privileged_groups if c not in df_for_bias.columns]
                 if missing:
                     st.error(
-                        f"Privileged-groups columns missing from CSV: {missing}\n\n"
-                        f"CSV columns: {list(uploaded_df.columns)}"
+                        f"Privileged-groups columns missing from data: {missing}\n\n"
+                        f"Columns available: {list(df_for_bias.columns)}"
                     )
                     st.stop()
-                y_true = uploaded_df["y_true"]
-                y_pred = uploaded_df["y_pred"]
-                sensitive_features = uploaded_df[list(privileged_groups.keys())]
+                y_true = df_for_bias["y_true"]
+                y_pred = df_for_bias["y_pred"]
+                sensitive_features = df_for_bias[list(privileged_groups.keys())]
 
             assessment = make_fairness_assessment(
                 project_id=project.project_id,

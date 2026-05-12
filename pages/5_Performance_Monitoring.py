@@ -21,6 +21,7 @@ from wavetest_monitoring import (
 from wavetest_app.adapters.monitoring import make_monitoring_assessment
 from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -98,9 +99,17 @@ with st.expander("⚙️ Configure", expanded=True):
             index=2, key="mn_dep",
         )
         st.markdown("---")
+        # Surface "Use project inputs" if `dataset` has the required
+        # monitoring columns. See INPUT_SPEC.md §Z.
+        project_dataset = load_input(project, "dataset")
+        opts = []
+        if project_dataset is not None:
+            opts.append("Use project inputs")
+        opts += ["Demo data (synthetic)", "Upload CSV"]
         source = st.radio(
             "Data source",
-            ["Demo data (synthetic)", "Upload CSV"],
+            opts,
+            index=0,
             horizontal=True, key="mn_src",
         )
         uploaded_df = None
@@ -112,7 +121,7 @@ with st.expander("⚙️ Configure", expanded=True):
             n_samples = st.number_input(
                 "Demo samples", 100, 10_000, 1000, 100, key="mn_n",
             )
-        else:
+        elif source == "Upload CSV":
             uploaded_df = csv_uploader(
                 "Drop a CSV with monitoring data",
                 key="mn_upload",
@@ -123,6 +132,12 @@ with st.expander("⚙️ Configure", expanded=True):
                     "Optional: `confidence`. Any other numeric / categorical "
                     "columns will be analysed for drift and outliers."
                 ),
+            )
+        else:  # Use project inputs
+            st.caption(
+                f"Using `dataset` slot: `{project_dataset.name}` "
+                f"({project_dataset.stat().st_size:,} B). Must have "
+                "`timestamp`, `y_true`, `y_pred` columns."
             )
 
 # ---------------------------------------------------------------------------
@@ -143,8 +158,13 @@ if st.button("▶ Run assessment", type="primary", key="mn_run"):
         task_type=task_type, high_risk=high_risk, deployment=deployment,
     )
 
-    if source != "Demo data (synthetic)" and uploaded_df is None:
+    if source == "Upload CSV" and uploaded_df is None:
         st.error("Upload a CSV first or switch to demo data.")
+        st.stop()
+    if source == "Use project inputs" and project_dataset is None:
+        st.error(
+            "No `dataset` uploaded for this project. Go to **Project Inputs**."
+        )
         st.stop()
 
     with audit_assessment(project, "monitoring"):
@@ -153,8 +173,19 @@ if st.button("▶ Run assessment", type="primary", key="mn_run"):
                 df = generate_demo_monitoring_data(
                     n_samples=int(n_samples), drift_level=drift_level,
                 )
-            else:
+            elif source == "Upload CSV":
                 df = uploaded_df
+            else:  # Use project inputs
+                import pandas as _pd
+                df = _pd.read_csv(project_dataset, parse_dates=["timestamp"])
+                missing = [c for c in ("timestamp", "y_true", "y_pred")
+                           if c not in df.columns]
+                if missing:
+                    st.error(
+                        f"Project `dataset` is missing required monitoring "
+                        f"columns: {missing}. Got: {list(df.columns)}"
+                    )
+                    st.stop()
             assessment = make_monitoring_assessment(
                 project_id=project.project_id,
                 config=cfg, system_profile=profile,

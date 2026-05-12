@@ -22,6 +22,7 @@ from wavetest_dataquality import (
 from wavetest_app.adapters.dataquality import make_dataquality_assessment
 from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import (
     csv_uploader, page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -70,11 +71,23 @@ with st.expander("⚙️ Configure", expanded=True):
 
     with c2:
         st.markdown("**Data source**")
+        # If the project has the `dataset` slot uploaded, surface
+        # "Use project inputs" as the default option so analysts don't
+        # have to re-upload per run. See INPUT_SPEC.md §Z.
+        project_dataset = load_input(project, "dataset")
+        project_target_pop = load_input(project, "target_population_json")
+        opts = []
+        if project_dataset is not None:
+            opts.append("Use project inputs")
+        opts += ["Demo data (synthetic)", "Upload CSV"]
         source = st.radio(
             "Choose data",
-            ["Demo data (synthetic)", "Upload CSV"],
+            opts,
+            index=0,
             horizontal=True,
-            help="Demo data is generated with controllable quality issues.",
+            help="Demo data is generated with controllable quality issues. "
+                 "**Project inputs** come from the Project Inputs page "
+                 "(uploaded once per project).",
         )
         uploaded_df = None
         if source == "Demo data (synthetic)":
@@ -85,7 +98,7 @@ with st.expander("⚙️ Configure", expanded=True):
             n_samples = st.number_input(
                 "Sample count", 100, 50_000, 5000, 500,
             )
-        else:
+        elif source == "Upload CSV":
             uploaded_df = csv_uploader(
                 "Drop a CSV with the dataset to assess",
                 key="dq_upload",
@@ -96,17 +109,27 @@ with st.expander("⚙️ Configure", expanded=True):
                     "automatically."
                 ),
             )
+        else:  # Use project inputs
+            st.caption(
+                f"Using `dataset` slot: `{project_dataset.name}` "
+                f"({project_dataset.stat().st_size:,} B). "
+                "Manage in **Project Inputs**."
+            )
 
     st.markdown("**Target population (chi-square representativeness)**")
+    # If the project has a target_population_json slot, pre-fill from it
+    # (the analyst can still edit before running).
+    default_target_pop = (
+        project_target_pop if project_target_pop is not None else
+        '{\n'
+        '  "gender":      {"M": 0.49, "F": 0.51},\n'
+        '  "age_group":   {"18-30": 0.25, "31-45": 0.35, "46-60": 0.28, "60+": 0.12},\n'
+        '  "nationality": {"DE": 0.85, "EU": 0.12, "Non-EU": 0.03}\n'
+        '}'
+    )
     target_pop_text = st.text_area(
         "JSON dict of feature → category proportions",
-        value=(
-            '{\n'
-            '  "gender":      {"M": 0.49, "F": 0.51},\n'
-            '  "age_group":   {"18-30": 0.25, "31-45": 0.35, "46-60": 0.28, "60+": 0.12},\n'
-            '  "nationality": {"DE": 0.85, "EU": 0.12, "Non-EU": 0.03}\n'
-            '}'
-        ),
+        value=default_target_pop,
         height=140,
     )
 
@@ -129,8 +152,13 @@ if run_clicked:
         min_sample_size=int(min_sample_size),
     )
 
-    if source != "Demo data (synthetic)" and uploaded_df is None:
+    if source == "Upload CSV" and uploaded_df is None:
         st.error("Upload a CSV first or switch to demo data.")
+        st.stop()
+    if source == "Use project inputs" and project_dataset is None:
+        st.error(
+            "No `dataset` uploaded for this project. Go to **Project Inputs**."
+        )
         st.stop()
 
     with audit_assessment(project, "data_quality"):
@@ -139,8 +167,11 @@ if run_clicked:
                 df = generate_demo_data(
                     n_samples=int(n_samples), quality_level=quality_level,
                 )
-            else:
+            elif source == "Upload CSV":
                 df = uploaded_df
+            else:  # Use project inputs
+                import pandas as _pd
+                df = _pd.read_csv(project_dataset)
 
             assessment = make_dataquality_assessment(
                 project_id=project.project_id,

@@ -33,6 +33,7 @@ from wavetest_app.cybersecurity import (
 from wavetest_app.db.ids import next_id
 from wavetest_app.db.models import CybersecurityPlan
 from wavetest_app.db.session import get_session
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import (
     page_header, project_picker, risk_pill, show_recommendations,
 )
@@ -288,25 +289,58 @@ with st.expander(
         "above asks the team about (`adversarial_input_controls`)."
     )
 
+    # Surface "Use project inputs" if both sklearn_model + dataset
+    # slots are populated. See INPUT_SPEC.md §Z.
+    art_project_model = load_input(project, "sklearn_model")
+    art_project_dataset = load_input(project, "dataset")
+    art_project_ready = (
+        art_project_model is not None and art_project_dataset is not None
+    )
+    art_source = st.radio(
+        "Source",
+        (["Use project inputs"] if art_project_ready else [])
+        + ["Upload now"],
+        index=0, horizontal=True, key="art_src",
+    )
+
     art_cols = st.columns(2)
-    with art_cols[0]:
-        art_model_file = st.file_uploader(
-            "Pickled model (.pkl / .joblib) — must implement `predict`",
-            type=["pkl", "pickle", "joblib"],
-            key="art_model",
-        )
-        art_target = st.text_input(
-            "Target column", value="target", key="art_target",
-        )
-    with art_cols[1]:
-        art_csv_file = st.file_uploader(
-            "Test CSV (features + target)", type=["csv"], key="art_csv",
-        )
-        art_n_samples = st.number_input(
-            "Samples to attack", 1, 50, 10, 1, key="art_n",
-            help="Each sample needs many model queries — stay small "
-                 "while exploring.",
-        )
+    if art_source == "Upload now":
+        with art_cols[0]:
+            art_model_file = st.file_uploader(
+                "Pickled model (.pkl / .joblib) — must implement `predict`",
+                type=["pkl", "pickle", "joblib"],
+                key="art_model",
+            )
+            art_target = st.text_input(
+                "Target column", value="target", key="art_target",
+            )
+        with art_cols[1]:
+            art_csv_file = st.file_uploader(
+                "Test CSV (features + target)", type=["csv"], key="art_csv",
+            )
+            art_n_samples = st.number_input(
+                "Samples to attack", 1, 50, 10, 1, key="art_n",
+                help="Each sample needs many model queries — stay small "
+                     "while exploring.",
+            )
+    else:  # Use project inputs
+        with art_cols[0]:
+            st.caption(
+                f"Model: `{art_project_model.name}` "
+                f"({art_project_model.stat().st_size:,} B)"
+            )
+            st.caption(
+                f"Dataset: `{art_project_dataset.name}` "
+                f"({art_project_dataset.stat().st_size:,} B). "
+                "Target column = `y_true` (convention)."
+            )
+            art_target = "y_true"
+            art_model_file = art_csv_file = "_project_"  # sentinel
+        with art_cols[1]:
+            art_n_samples = st.number_input(
+                "Samples to attack", 1, 50, 10, 1, key="art_n_pi",
+                help="Each sample needs many model queries — stay small.",
+            )
 
     if st.button(
         "Run HopSkipJump attack",
@@ -319,11 +353,15 @@ with st.expander(
             from art.estimators.classification import SklearnClassifier
             from sklearn.metrics import accuracy_score
 
-            model = pickle.loads(art_model_file.getvalue())
-            test_df = pd.read_csv(io.BytesIO(art_csv_file.getvalue()))
+            if art_source == "Use project inputs":
+                model = pickle.loads(art_project_model.read_bytes())
+                test_df = pd.read_csv(art_project_dataset)
+            else:
+                model = pickle.loads(art_model_file.getvalue())
+                test_df = pd.read_csv(io.BytesIO(art_csv_file.getvalue()))
             if art_target not in test_df.columns:
                 st.error(
-                    f"Target column `{art_target}` not in CSV. "
+                    f"Target column `{art_target}` not in dataset. "
                     f"Got: {list(test_df.columns)}"
                 )
                 st.stop()
