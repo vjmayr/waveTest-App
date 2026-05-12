@@ -34,6 +34,7 @@ from wavetest_app.audit import record_run
 from wavetest_app.auth import require_login
 from wavetest_app.branding import render_body, render_cover
 from wavetest_app.config import project_artifacts_dir
+from wavetest_app.inputs import list_inputs, load_input
 from wavetest_app.ui import (
     csv_uploader,
     model_uploader,
@@ -76,6 +77,53 @@ inc_bias  = mc2.checkbox("⚖️ Bias",          value=True, key="cb_inc_bias")
 inc_exp   = mc3.checkbox("🔍 Explain",       value=True, key="cb_inc_exp")
 inc_lg    = mc4.checkbox("📝 Logging",       value=True, key="cb_inc_lg")
 inc_mon   = mc5.checkbox("📈 Monitoring",    value=True, key="cb_inc_mon")
+
+# ---------------------------------------------------------------------------
+# Project-inputs override — when checked, each module pulls its inputs
+# from the project's central slots (uploaded on the Project Inputs page)
+# regardless of the per-module radios below. Only modules whose required
+# slots are present get this override; the others fall through to the
+# per-module radio. See INPUT_SPEC.md §Z.
+# ---------------------------------------------------------------------------
+_pi_status = list_inputs(project)
+_pi_dataset_ready          = _pi_status["dataset"]["present"]
+_pi_sklearn_model_ready    = _pi_status["sklearn_model"]["present"]
+_pi_privgroups_ready       = _pi_status["privileged_groups_json"]["present"]
+_pi_targetpop_ready        = _pi_status["target_population_json"]["present"]
+
+_pi_any_ready = (
+    _pi_dataset_ready or _pi_sklearn_model_ready
+    or _pi_privgroups_ready or _pi_targetpop_ready
+)
+
+use_project_inputs = st.checkbox(
+    "📥 Use Project Inputs where available",
+    value=_pi_any_ready,
+    key="cb_use_pi",
+    disabled=not _pi_any_ready,
+    help=(
+        "When checked, every enabled module pulls its inputs from the "
+        "project's central upload slots instead of the per-module "
+        "Demo / Upload radio below. Upload artefacts in the "
+        "**Project Inputs** page first. Module-by-module breakdown of "
+        "which slots are wired:\n\n"
+        "- Data Quality / Bias / Monitoring → `dataset`\n"
+        "- Bias → also `privileged_groups_json`\n"
+        "- Data Quality → also `target_population_json`\n"
+        "- Explainability → `sklearn_model` + `dataset` (+ optional `dataset_train`)"
+    ),
+)
+if use_project_inputs:
+    flags = []
+    flags.append(("dataset",                _pi_dataset_ready))
+    flags.append(("sklearn_model",          _pi_sklearn_model_ready))
+    flags.append(("privileged_groups_json", _pi_privgroups_ready))
+    flags.append(("target_population_json", _pi_targetpop_ready))
+    chips = " ".join(
+        f"`{name}` " + ("✅" if ready else "⚪")
+        for name, ready in flags
+    )
+    st.caption(f"Project slots in use: {chips}")
 
 # ---------------------------------------------------------------------------
 # Per-module configuration (demo data or upload, plus assessment knobs)
@@ -143,13 +191,17 @@ with st.expander("⚙️ Per-module configuration", expanded=True):
                     "for each key in the privileged-groups JSON below."
                 ),
             )
+        _pi_priv = load_input(project, "privileged_groups_json")
         priv_text = st.text_area(
             "Privileged groups (JSON)",
             value=(
+                _pi_priv if _pi_priv else
                 '{"geschlecht":"M","alter_gruppe":"<30",'
                 '"nationalitaet":"DE","behinderung":false}'
             ),
             height=80, key="cb_priv", disabled=not inc_bias,
+            help="Pre-filled from the project's `privileged_groups_json` "
+                 "slot if uploaded." if _pi_priv else None,
         )
 
     # --- Explainability + Monitoring
@@ -333,11 +385,28 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
         _bump("Running Data Quality…")
         from wavetest_dataquality import generate_demo_data
         from wavetest_report import ReportEnvelope
+        # Use the project's target_population_json slot when available;
+        # otherwise fall back to the hand-rolled default for demos.
+        if use_project_inputs and _pi_targetpop_ready:
+            _pi_tp_raw = load_input(project, "target_population_json")
+            try:
+                _pi_target_pop = json.loads(_pi_tp_raw)
+            except json.JSONDecodeError as exc:
+                st.error(
+                    f"Combined / Data Quality: project "
+                    f"`target_population_json` slot doesn't parse: {exc}"
+                )
+                st.stop()
+        else:
+            _pi_target_pop = {"gender": {"M": 0.49, "F": 0.51}}
         a = make_dataquality_assessment(
             project.project_id,
-            target_population={"gender": {"M": 0.49, "F": 0.51}},
+            target_population=_pi_target_pop,
         )
-        if dq_src == "Demo data (synthetic)":
+        if use_project_inputs and _pi_dataset_ready:
+            import pandas as _pd
+            df = _pd.read_csv(load_input(project, "dataset"))
+        elif dq_src == "Demo data (synthetic)":
             df = generate_demo_data(n_samples=int(dq_n), quality_level=dq_quality)
         else:
             df = dq_upload
@@ -356,7 +425,29 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
         a = make_fairness_assessment(
             project.project_id, privileged_groups=privileged_groups,
         )
-        if bias_src == "Demo data (synthetic)":
+        if use_project_inputs and _pi_dataset_ready:
+            import pandas as _pd
+            _pi_bias_df = _pd.read_csv(load_input(project, "dataset"))
+            if not {"y_true", "y_pred"}.issubset(_pi_bias_df.columns):
+                st.error(
+                    "Combined / Bias: project `dataset` is missing "
+                    "`y_true` / `y_pred`. Upload a corrected dataset."
+                )
+                st.stop()
+            missing_sf = [
+                c for c in privileged_groups
+                if c not in _pi_bias_df.columns
+            ]
+            if missing_sf:
+                st.error(
+                    f"Combined / Bias: privileged-groups columns "
+                    f"missing from project `dataset`: {missing_sf}"
+                )
+                st.stop()
+            y_true = _pi_bias_df["y_true"]
+            y_pred = _pi_bias_df["y_pred"]
+            sf = _pi_bias_df[list(privileged_groups.keys())]
+        elif bias_src == "Demo data (synthetic)":
             y_true, y_pred, sf, _ = bias_demo(
                 n_samples=int(bias_n), bias_level=bias_level,
             )
@@ -382,7 +473,32 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
         )
         a = make_explain_assessment(project.project_id, config=cfg)
 
-        if exp_src == "Demo model (synthetic)":
+        if (use_project_inputs
+                and _pi_sklearn_model_ready
+                and _pi_dataset_ready):
+            _bump("Running Explainability (project model + SHAP)…")
+            import pickle as _pickle
+            import pandas as _pd
+            model = _pickle.loads(
+                load_input(project, "sklearn_model").read_bytes(),
+            )
+            _pi_test_df = _pd.read_csv(load_input(project, "dataset"))
+            if "y_true" not in _pi_test_df.columns:
+                st.error(
+                    "Combined / Explainability: project `dataset` "
+                    "needs a `y_true` target column."
+                )
+                st.stop()
+            feature_names = [c for c in _pi_test_df.columns if c != "y_true"]
+            X_test = _pi_test_df[feature_names].to_numpy()
+            y_test = _pi_test_df["y_true"].to_numpy()
+            _pi_train = load_input(project, "dataset_train")
+            if _pi_train is not None:
+                _pi_train_df = _pd.read_csv(_pi_train)
+                X_train = _pi_train_df[feature_names].to_numpy()
+            else:
+                X_train = None
+        elif exp_src == "Demo model (synthetic)":
             _bump("Running Explainability (training demo model + SHAP)…")
             bundle = generate_demo_model(
                 n_samples=int(exp_n_demo), n_features=int(exp_n_features),
@@ -462,7 +578,21 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
         from wavetest_monitoring import generate_demo_monitoring_data
         from wavetest_report import ReportEnvelope
         a = make_monitoring_assessment(project.project_id)
-        if mon_src == "Demo data (synthetic)":
+        if use_project_inputs and _pi_dataset_ready:
+            import pandas as _pd
+            df = _pd.read_csv(
+                load_input(project, "dataset"),
+                parse_dates=["timestamp"] if "timestamp" else None,
+            )
+            missing = [c for c in ("timestamp", "y_true", "y_pred")
+                       if c not in df.columns]
+            if missing:
+                st.error(
+                    f"Combined / Monitoring: project `dataset` missing "
+                    f"required columns: {missing}"
+                )
+                st.stop()
+        elif mon_src == "Demo data (synthetic)":
             df = generate_demo_monitoring_data(
                 n_samples=int(mon_n), drift_level=mon_drift,
             )
