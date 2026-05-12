@@ -16,7 +16,17 @@ from datetime import date, datetime
 from typing import Any, Optional
 
 from sqlalchemy import (
-    Boolean, Date, DateTime, Float, ForeignKey, Index, JSON, String, Text,
+    Boolean,
+    Date,
+    DateTime,
+    Float,
+    ForeignKey,
+    Index,
+    Integer,
+    JSON,
+    String,
+    Text,
+    UniqueConstraint,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -633,4 +643,67 @@ class ModelCard(Base):
         return (
             f"<ModelCard {self.card_id} {self.project_id} "
             f"{self.model_name!r} v{self.model_version}>"
+        )
+
+
+# ---------------------------------------------------------------------------
+# Project inputs — central per-project upload store (INPUT_SPEC.md §Z)
+# ---------------------------------------------------------------------------
+class ProjectInput(Base):
+    """One reusable input slot per project — uploaded once, consumed by
+    every assessment page that needs it.
+
+    Seven canonical slots (see ``wavetest_app.inputs.SLOTS``):
+
+    * ``dataset`` — canonical CSV with ``y_true`` + (optional)
+      ``y_pred`` / ``timestamp`` / ``confidence`` + arbitrary feature
+      columns. Consumed by Data Quality, Bias, Explainability, Monitoring,
+      Cybersecurity (ART) and Captum.
+    * ``dataset_train`` — optional training CSV (SHAP background).
+    * ``sklearn_model`` — pickled sklearn classifier (Explain, Cybersec ART).
+    * ``pytorch_model`` — full pickled nn.Module (Captum).
+    * ``hf_model_id`` — string, HuggingFace model id (TextAttack).
+    * ``privileged_groups_json`` — Bias.
+    * ``target_population_json`` — Data Quality.
+
+    File-based slots write to ``<project.folder_path>/inputs/<slot><ext>``.
+    Value-based slots (``hf_model_id``, the two JSON blobs) store the
+    string verbatim in ``value``.
+    """
+
+    __tablename__ = "project_inputs"
+
+    input_id: Mapped[str] = mapped_column(String(16), primary_key=True)
+
+    project_id: Mapped[str] = mapped_column(
+        String(16),
+        ForeignKey("projects.project_id", ondelete="CASCADE"),
+        nullable=False,
+    )
+
+    slot: Mapped[str] = mapped_column(String(32), nullable=False)
+
+    file_path: Mapped[Optional[str]] = mapped_column(Text)
+    value: Mapped[Optional[str]] = mapped_column(Text)
+    content_type: Mapped[str] = mapped_column(String(64), default="")
+    size_bytes: Mapped[int] = mapped_column(Integer, default=0)
+
+    uploaded_by: Mapped[str] = mapped_column(String(64), default="system")
+    uploaded_at: Mapped[datetime] = mapped_column(
+        DateTime, default=utc_now, onupdate=utc_now, nullable=False,
+    )
+    notes: Mapped[str] = mapped_column(Text, default="")
+
+    project: Mapped[Project] = relationship()
+
+    __table_args__ = (
+        UniqueConstraint("project_id", "slot", name="uq_project_input_slot"),
+        Index("ix_project_inputs_project_id", "project_id"),
+    )
+
+    def __repr__(self) -> str:
+        kind = "file" if self.file_path else "value"
+        return (
+            f"<ProjectInput {self.input_id} {self.project_id}/{self.slot} "
+            f"[{kind}] {self.size_bytes}b>"
         )

@@ -210,6 +210,8 @@ nav = st.navigation(
             st.Page(home_page, title="Home", icon="🌊", default=True),
         ],
         "Modules": [
+            st.Page("pages/20_Project_Inputs.py",
+                    title="Project Inputs",        icon="📥"),
             st.Page("pages/0_Combined_Report.py",
                     title="Combined Report",       icon="🧾"),
             st.Page("pages/1_Data_Quality.py",
