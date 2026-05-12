@@ -8,6 +8,12 @@ requirements, example CSVs, and how to read the results.
 > **Audience:** Internal consultants. Assumes you can navigate a web app, know
 > what an AI system is, and have a basic feel for compliance work. No coding
 > required — every assessment is launched from the browser UI.
+>
+> **Companion document:** [INPUT_SPEC.md](INPUT_SPEC.md) is the rigorous
+> contract for the input data each module expects — exact column names,
+> value ranges, file formats, validation rules. Share that with the
+> customer before the engagement so they ship the right files; the manual
+> below assumes they already have.
 
 ---
 

@@ -6,7 +6,9 @@ replacing the notebook-based workflow with a browser UI for ≤10 analysts.
 
 > **Analyst quickstart:** see [docs/AUDIT_MANUAL.md](docs/AUDIT_MANUAL.md) for
 > the step-by-step workflow, per-module input requirements, example CSVs, and
-> how to read the reports.
+> how to read the reports. The rigorous input-data contract per module is in
+> [docs/INPUT_SPEC.md](docs/INPUT_SPEC.md) — share that with the client before
+> the engagement so they ship the right files.
 
 ## Scope
 
