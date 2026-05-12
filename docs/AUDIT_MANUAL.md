@@ -129,6 +129,27 @@ Open **📋 Projects** and create a project bound to the client + project
 type. The artefacts directory under `artifacts/<client>/<project>/` is
 created the first time an assessment runs against this project.
 
+### Step 5 — (Recommended) Upload the customer's inputs once
+
+Open **📥 Project Inputs** (top of the Modules section). For each
+artefact the engagement needs, fill the matching slot:
+
+| Slot | What goes in it | Used by |
+| --- | --- | --- |
+| `dataset` | Canonical CSV: `y_true` + (optional) `y_pred`, `timestamp`, `confidence`, features | Data Quality, Bias, Explainability, Monitoring, Cybersecurity (ART), Captum |
+| `dataset_train` | Optional training CSV | Explainability (SHAP background) |
+| `sklearn_model` | Pickled scikit-learn classifier | Explainability, Cybersecurity (ART) |
+| `pytorch_model` | Full pickled `nn.Module` | Captum |
+| `hf_model_id` | HuggingFace model id (string) | TextAttack |
+| `privileged_groups_json` | JSON `{column: privileged_value, …}` | Bias |
+| `target_population_json` | JSON `{column: {category: proportion, …}, …}` | Data Quality |
+
+Every assessment page now offers **"Use project inputs"** as the
+first data-source option — the page reads the matching slot(s),
+validates the column convention, and runs without per-page re-uploads.
+The Combined Report has a single top-level checkbox that applies the
+override across every enabled module.
+
 You're ready to audit.
 
 ---
