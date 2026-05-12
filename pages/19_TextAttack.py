@@ -23,6 +23,7 @@ import streamlit as st
 
 from wavetest_app.audit import record_run
 from wavetest_app.auth import require_login
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import page_header, project_picker, risk_pill
 
 st.set_page_config(
@@ -58,9 +59,17 @@ st.info(
 # ---------------------------------------------------------------------------
 # Inputs
 # ---------------------------------------------------------------------------
+# Pre-fill the HF model id from the project's `hf_model_id` slot if set.
+# The analyst can still edit before running.
+project_hf = load_input(project, "hf_model_id")
+if project_hf:
+    st.caption(
+        f"Pre-filled from the project's `hf_model_id` slot. "
+        "Manage in **Project Inputs**."
+    )
 model_name = st.text_input(
     "HuggingFace model id",
-    value="distilbert-base-uncased-finetuned-sst-2-english",
+    value=project_hf or "distilbert-base-uncased-finetuned-sst-2-english",
     help="A `transformers` text-classification checkpoint. The default "
          "is binary sentiment (POSITIVE / NEGATIVE).",
 )

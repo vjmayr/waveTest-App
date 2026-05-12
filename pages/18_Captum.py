@@ -22,7 +22,13 @@ import streamlit as st
 
 from wavetest_app.audit import record_run
 from wavetest_app.auth import require_login
+from wavetest_app.inputs import load_input
 from wavetest_app.ui import page_header, project_picker, risk_pill
+
+# Convention columns from the canonical `dataset` slot — see
+# INPUT_SPEC.md §Z. Captum operates on numeric features only, so we
+# drop these meta-columns before tensorising the dataframe.
+_DATASET_META_COLS = ("y_true", "y_pred", "timestamp", "confidence")
 
 st.set_page_config(
     page_title="Captum · waveTest",
@@ -56,20 +62,41 @@ st.info(
 )
 
 # ---------------------------------------------------------------------------
-# Uploads
+# Uploads / source selection (Project Inputs vs ad-hoc)
 # ---------------------------------------------------------------------------
-c1, c2 = st.columns(2)
-with c1:
-    model_file = st.file_uploader(
-        "PyTorch model (.pt / .pth — full module, not a state dict)",
-        type=["pt", "pth"],
-        key="cap_model",
-    )
-with c2:
-    csv_file = st.file_uploader(
-        "Test CSV (numeric columns only)",
-        type=["csv"],
-        key="cap_csv",
+project_pytorch = load_input(project, "pytorch_model")
+project_dataset = load_input(project, "dataset")
+project_ready = project_pytorch is not None and project_dataset is not None
+
+src_opts = (["Use project inputs"] if project_ready else []) + ["Upload now"]
+source = st.radio(
+    "Source",
+    src_opts, index=0, horizontal=True, key="cap_src",
+)
+
+model_file = None
+csv_file = None
+
+if source == "Upload now":
+    c1, c2 = st.columns(2)
+    with c1:
+        model_file = st.file_uploader(
+            "PyTorch model (.pt / .pth — full module, not a state dict)",
+            type=["pt", "pth"],
+            key="cap_model",
+        )
+    with c2:
+        csv_file = st.file_uploader(
+            "Test CSV (numeric columns only)",
+            type=["csv"],
+            key="cap_csv",
+        )
+else:  # Use project inputs
+    st.caption(
+        f"Using project slots — model: `{project_pytorch.name}`, "
+        f"dataset: `{project_dataset.name}`. Meta-columns "
+        f"({', '.join(_DATASET_META_COLS)}) will be dropped; "
+        "Captum attributes against the remaining numeric features."
     )
 
 target_class = st.number_input(
@@ -86,11 +113,15 @@ n_steps = st.slider(
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
+_run_disabled = (
+    (source == "Upload now" and (model_file is None or csv_file is None))
+    or (source == "Use project inputs" and not project_ready)
+)
 if st.button(
     "Compute attribution",
     type="primary",
     key="cap_run",
-    disabled=(model_file is None or csv_file is None),
+    disabled=_run_disabled,
 ):
     try:
         import torch
@@ -100,14 +131,27 @@ if st.button(
             # Load the model on CPU; Captum wraps any differentiable
             # nn.Module. weights_only=False permits the legacy
             # torch.save(model) format.
-            model = torch.load(
-                io.BytesIO(model_file.getvalue()),
-                map_location="cpu",
-                weights_only=False,
-            )
+            if source == "Use project inputs":
+                model = torch.load(
+                    str(project_pytorch),
+                    map_location="cpu",
+                    weights_only=False,
+                )
+                df = pd.read_csv(project_dataset)
+                # Drop dataset meta-columns; Captum needs numeric features
+                df = df.drop(
+                    columns=[c for c in _DATASET_META_COLS if c in df.columns],
+                )
+                df = df.select_dtypes(include="number")
+            else:
+                model = torch.load(
+                    io.BytesIO(model_file.getvalue()),
+                    map_location="cpu",
+                    weights_only=False,
+                )
+                df = pd.read_csv(io.BytesIO(csv_file.getvalue()))
             model.eval()
 
-            df = pd.read_csv(io.BytesIO(csv_file.getvalue()))
             feature_names = list(df.columns)
             X = torch.tensor(
                 df.to_numpy(), dtype=torch.float32, requires_grad=True,
