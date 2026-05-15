@@ -28,12 +28,6 @@ dependencies = [
     "fairlearn>=0.10",               # constraint-based fairness + per-group metric breakdowns
     "evidently>=0.7",                # rich HTML drift / data-quality reports for monitoring
     "adversarial-robustness-toolbox>=1.20",  # active adversarial testing for cybersecurity
-    "captum>=0.7",                   # PyTorch attribution (Integrated Gradients etc)
-    "torch>=2.0",                    # required by captum (and textattack below)
-    "textattack>=0.3",               # NLP adversarial attack recipes
-    "transformers>=4.30",            # HuggingFace models for textattack
-    "nltk>=3.8",                     # textattack runtime dependency
-    "datasets>=2.14",                # textattack/transformers helper
     "markdown-pdf>=1.0",             # Markdown → PDF for the manual export
     "setuptools<81",                 # ydata-profiling depends on `pkg_resources`
                                      # which setuptools 81+ removed; pin until
@@ -47,6 +41,28 @@ dependencies = [
 
 [project.optional-dependencies]
 test = ["pytest>=7"]
+
+# PyTorch-based attribution (Captum) used by the 🖼️ Captum page.
+# Pulls in torch (~1.5 GB on macOS). Install only when the analyst will
+# actually run CV attribution against client models.
+cv = [
+    "captum>=0.7",
+    "torch>=2.0",
+]
+
+# NLP adversarial-testing (TextAttack) used by the 💬 TextAttack page.
+# Pulls in transformers + torch + nltk + datasets — heavy. Install only
+# when the engagement covers an NLP model.
+nlp = [
+    "textattack>=0.3",
+    "transformers>=4.30",
+    "torch>=2.0",         # textattack runtime (shared with [cv])
+    "nltk>=3.8",
+    "datasets>=2.14",
+]
+
+# Convenience meta-extra: everything heavy in one install.
+full = ["wavetest-app[cv,nlp]"]
 
 [tool.setuptools.packages.find]
 where = ["src"]

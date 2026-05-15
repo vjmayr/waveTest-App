@@ -82,6 +82,10 @@ source .venv/bin/activate
 
 # 2. Install the app + deps
 pip install -e .
+# Optional heavy extras (torch-backed adversarial modules):
+#   pip install -e '.[cv]'    # 🖼️ Captum (PyTorch CV attribution)
+#   pip install -e '.[nlp]'   # 💬 TextAttack (transformers + nltk + datasets)
+#   pip install -e '.[full]'  # everything in one go
 
 # 3. Editable-install the six wavetest_* packages from your toolchain checkout
 ./scripts/install_toolchain.sh ~/Documents/GitHub/RAI-TOOLCHAIN
