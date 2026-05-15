@@ -30,7 +30,7 @@ from wavetest_app.adapters.fairness    import make_fairness_assessment
 from wavetest_app.adapters.explain     import make_explain_assessment
 from wavetest_app.adapters.logging     import make_logging_assessment
 from wavetest_app.adapters.monitoring  import make_monitoring_assessment
-from wavetest_app.audit import record_run
+from wavetest_app.audit import audit_assessment, record_run
 from wavetest_app.auth import require_login
 from wavetest_app.branding import render_body, render_cover
 from wavetest_app.config import project_artifacts_dir
@@ -370,316 +370,323 @@ if st.button("▶ Run all and generate combined PDF", type="primary", key="cb_ru
                 )
                 st.stop()
 
-    _t0 = time.perf_counter()
-    progress = st.progress(0.0, text="Initialising…")
-    envelopes = []
-    panel_status = {}
-    step_box = [0]
+    # Everything below is wrapped so a mid-pipeline crash (orchestrator
+    # raises, PDF render dies, etc.) still writes a FAILED row to
+    # audit_log. Pre-flight validation above intentionally stays outside:
+    # ``st.stop()`` raises a ``BaseException``-derived ``StopException``
+    # that ``audit_assessment`` does NOT catch, so input mistakes show
+    # the user-facing error without being logged as a crash.
+    with audit_assessment(project, "combined"):
+        _t0 = time.perf_counter()
+        progress = st.progress(0.0, text="Initialising…")
+        envelopes = []
+        panel_status = {}
+        step_box = [0]
 
-    def _bump(label: str) -> None:
-        step_box[0] += 1
-        progress.progress(step_box[0] / (selected + 1), text=label)
+        def _bump(label: str) -> None:
+            step_box[0] += 1
+            progress.progress(step_box[0] / (selected + 1), text=label)
 
-    # --- 1. Data Quality
-    if inc_dq:
-        _bump("Running Data Quality…")
-        from wavetest_dataquality import generate_demo_data
-        from wavetest_report import ReportEnvelope
-        # Use the project's target_population_json slot when available;
-        # otherwise fall back to the hand-rolled default for demos.
-        if use_project_inputs and _pi_targetpop_ready:
-            _pi_tp_raw = load_input(project, "target_population_json")
-            try:
-                _pi_target_pop = json.loads(_pi_tp_raw)
-            except json.JSONDecodeError as exc:
-                st.error(
-                    f"Combined / Data Quality: project "
-                    f"`target_population_json` slot doesn't parse: {exc}"
-                )
-                st.stop()
-        else:
-            _pi_target_pop = {"gender": {"M": 0.49, "F": 0.51}}
-        a = make_dataquality_assessment(
-            project.project_id,
-            target_population=_pi_target_pop,
-        )
-        if use_project_inputs and _pi_dataset_ready:
-            import pandas as _pd
-            df = _pd.read_csv(load_input(project, "dataset"))
-        elif dq_src == "Demo data (synthetic)":
-            df = generate_demo_data(n_samples=int(dq_n), quality_level=dq_quality)
-        else:
-            df = dq_upload
-        r = a.run(df, verbose=False)
-        envelopes.append(ReportEnvelope.from_dataquality(a, r))
-        panel_status["📊 Data Quality"] = (
-            r.metrics.quality_classification,
-            "ok" if r.article_10_compliant else "warning",
-        )
-
-    # --- 2. Bias
-    if inc_bias:
-        _bump("Running Bias…")
-        from wavetest_fairness import generate_demo_data as bias_demo
-        from wavetest_report import ReportEnvelope
-        a = make_fairness_assessment(
-            project.project_id, privileged_groups=privileged_groups,
-        )
-        if use_project_inputs and _pi_dataset_ready:
-            import pandas as _pd
-            _pi_bias_df = _pd.read_csv(load_input(project, "dataset"))
-            if not {"y_true", "y_pred"}.issubset(_pi_bias_df.columns):
-                st.error(
-                    "Combined / Bias: project `dataset` is missing "
-                    "`y_true` / `y_pred`. Upload a corrected dataset."
-                )
-                st.stop()
-            missing_sf = [
-                c for c in privileged_groups
-                if c not in _pi_bias_df.columns
-            ]
-            if missing_sf:
-                st.error(
-                    f"Combined / Bias: privileged-groups columns "
-                    f"missing from project `dataset`: {missing_sf}"
-                )
-                st.stop()
-            y_true = _pi_bias_df["y_true"]
-            y_pred = _pi_bias_df["y_pred"]
-            sf = _pi_bias_df[list(privileged_groups.keys())]
-        elif bias_src == "Demo data (synthetic)":
-            y_true, y_pred, sf, _ = bias_demo(
-                n_samples=int(bias_n), bias_level=bias_level,
-            )
-        else:
-            y_true = bias_upload["y_true"]
-            y_pred = bias_upload["y_pred"]
-            sf = bias_upload[list(privileged_groups.keys())]
-        r = a.run(y_true, y_pred, sf, verbose=False)
-        envelopes.append(ReportEnvelope.from_fairness(a, r))
-        risk_v = a.overall_risk.value
-        panel_status["⚖️ Bias"] = (
-            risk_v,
-            "ok" if risk_v in ("NIEDRIG", "LOW") else "critical",
-        )
-
-    # --- 3. Explainability
-    if inc_exp:
-        from wavetest_explain.core.assessment import AssessmentConfig
-        from wavetest_explain.data.demo import generate_demo_model
-        from wavetest_report import ReportEnvelope
-        cfg = AssessmentConfig(
-            n_explanation_samples=int(exp_n_explanations),
-        )
-        a = make_explain_assessment(project.project_id, config=cfg)
-
-        if (use_project_inputs
-                and _pi_sklearn_model_ready
-                and _pi_dataset_ready):
-            _bump("Running Explainability (project model + SHAP)…")
-            import pickle as _pickle
-            import pandas as _pd
-            model = _pickle.loads(
-                load_input(project, "sklearn_model").read_bytes(),
-            )
-            _pi_test_df = _pd.read_csv(load_input(project, "dataset"))
-            if "y_true" not in _pi_test_df.columns:
-                st.error(
-                    "Combined / Explainability: project `dataset` "
-                    "needs a `y_true` target column."
-                )
-                st.stop()
-            feature_names = [c for c in _pi_test_df.columns if c != "y_true"]
-            X_test = _pi_test_df[feature_names].to_numpy()
-            y_test = _pi_test_df["y_true"].to_numpy()
-            _pi_train = load_input(project, "dataset_train")
-            if _pi_train is not None:
-                _pi_train_df = _pd.read_csv(_pi_train)
-                X_train = _pi_train_df[feature_names].to_numpy()
-            else:
-                X_train = None
-        elif exp_src == "Demo model (synthetic)":
-            _bump("Running Explainability (training demo model + SHAP)…")
-            bundle = generate_demo_model(
-                n_samples=int(exp_n_demo), n_features=int(exp_n_features),
-            )
-            model = bundle.model
-            X_test = bundle.X_test
-            y_test = bundle.y_test
-            feature_names = bundle.feature_names
-            X_train = bundle.X_train
-        else:
-            _bump("Running Explainability (uploaded model + SHAP)…")
-            feature_names = [
-                c for c in exp_test_df.columns if c != exp_target_col
-            ]
-            X_test = exp_test_df[feature_names].to_numpy()
-            y_test = exp_test_df[exp_target_col].to_numpy()
-            model = exp_model
-            if exp_train_df is not None:
-                train_missing = [
-                    c for c in feature_names + [exp_target_col]
-                    if c not in exp_train_df.columns
-                ]
-                if train_missing:
+        # --- 1. Data Quality
+        if inc_dq:
+            _bump("Running Data Quality…")
+            from wavetest_dataquality import generate_demo_data
+            from wavetest_report import ReportEnvelope
+            # Use the project's target_population_json slot when available;
+            # otherwise fall back to the hand-rolled default for demos.
+            if use_project_inputs and _pi_targetpop_ready:
+                _pi_tp_raw = load_input(project, "target_population_json")
+                try:
+                    _pi_target_pop = json.loads(_pi_tp_raw)
+                except json.JSONDecodeError as exc:
                     st.error(
-                        f"Explainability: training CSV is missing columns: {train_missing}"
+                        f"Combined / Data Quality: project "
+                        f"`target_population_json` slot doesn't parse: {exc}"
                     )
                     st.stop()
-                X_train = exp_train_df[feature_names].to_numpy()
             else:
-                X_train = None
-
-        X_test = np.asarray(X_test)
-        y_test = np.asarray(y_test)
-        if X_train is not None:
-            X_train = np.asarray(X_train)
-
-        r = a.run(
-            model, X_test, y_test,
-            feature_names, X_train, verbose=False,
-        )
-        envelopes.append(ReportEnvelope.from_explainability(a, r))
-        panel_status["🔍 Explain"] = (
-            f"{r.accuracy:.1%}",
-            "ok" if r.accuracy >= 0.85 else "warning",
-        )
-
-    # --- 4. Logging
-    if inc_lg:
-        _bump("Running Logging assessment…")
-        from wavetest_logging import CurrentLoggingState, SystemProfile
-        from wavetest_report import ReportEnvelope
-        a = make_logging_assessment(
-            project.project_id,
-            current_logging=CurrentLoggingState(
-                has_logging=lg_has,
-                logs_inputs=lg_in,
-                logs_outputs=lg_out,
-                logs_timestamps=lg_ts,
-                structured_format=lg_struct,
-                retention_period_days=int(lg_retention),
-            ),
-            system_profile=SystemProfile(
-                contains_personal_data=lg_personal,
-                high_risk_classification=lg_high_risk,
-            ),
-        )
-        r = a.run(verbose=False)
-        envelopes.append(ReportEnvelope.from_logging(a, r))
-        panel_status["📝 Logging"] = (
-            f"{r.summary['compliance_percent']}%",
-            "ok" if r.article_12_compliant else "warning",
-        )
-
-    # --- 5. Monitoring
-    if inc_mon:
-        _bump("Running Monitoring…")
-        from wavetest_monitoring import generate_demo_monitoring_data
-        from wavetest_report import ReportEnvelope
-        a = make_monitoring_assessment(project.project_id)
-        if use_project_inputs and _pi_dataset_ready:
-            import pandas as _pd
-            df = _pd.read_csv(
-                load_input(project, "dataset"),
-                parse_dates=["timestamp"] if "timestamp" else None,
+                _pi_target_pop = {"gender": {"M": 0.49, "F": 0.51}}
+            a = make_dataquality_assessment(
+                project.project_id,
+                target_population=_pi_target_pop,
             )
-            missing = [c for c in ("timestamp", "y_true", "y_pred")
-                       if c not in df.columns]
-            if missing:
-                st.error(
-                    f"Combined / Monitoring: project `dataset` missing "
-                    f"required columns: {missing}"
+            if use_project_inputs and _pi_dataset_ready:
+                import pandas as _pd
+                df = _pd.read_csv(load_input(project, "dataset"))
+            elif dq_src == "Demo data (synthetic)":
+                df = generate_demo_data(n_samples=int(dq_n), quality_level=dq_quality)
+            else:
+                df = dq_upload
+            r = a.run(df, verbose=False)
+            envelopes.append(ReportEnvelope.from_dataquality(a, r))
+            panel_status["📊 Data Quality"] = (
+                r.metrics.quality_classification,
+                "ok" if r.article_10_compliant else "warning",
+            )
+
+        # --- 2. Bias
+        if inc_bias:
+            _bump("Running Bias…")
+            from wavetest_fairness import generate_demo_data as bias_demo
+            from wavetest_report import ReportEnvelope
+            a = make_fairness_assessment(
+                project.project_id, privileged_groups=privileged_groups,
+            )
+            if use_project_inputs and _pi_dataset_ready:
+                import pandas as _pd
+                _pi_bias_df = _pd.read_csv(load_input(project, "dataset"))
+                if not {"y_true", "y_pred"}.issubset(_pi_bias_df.columns):
+                    st.error(
+                        "Combined / Bias: project `dataset` is missing "
+                        "`y_true` / `y_pred`. Upload a corrected dataset."
+                    )
+                    st.stop()
+                missing_sf = [
+                    c for c in privileged_groups
+                    if c not in _pi_bias_df.columns
+                ]
+                if missing_sf:
+                    st.error(
+                        f"Combined / Bias: privileged-groups columns "
+                        f"missing from project `dataset`: {missing_sf}"
+                    )
+                    st.stop()
+                y_true = _pi_bias_df["y_true"]
+                y_pred = _pi_bias_df["y_pred"]
+                sf = _pi_bias_df[list(privileged_groups.keys())]
+            elif bias_src == "Demo data (synthetic)":
+                y_true, y_pred, sf, _ = bias_demo(
+                    n_samples=int(bias_n), bias_level=bias_level,
                 )
-                st.stop()
-        elif mon_src == "Demo data (synthetic)":
-            df = generate_demo_monitoring_data(
-                n_samples=int(mon_n), drift_level=mon_drift,
+            else:
+                y_true = bias_upload["y_true"]
+                y_pred = bias_upload["y_pred"]
+                sf = bias_upload[list(privileged_groups.keys())]
+            r = a.run(y_true, y_pred, sf, verbose=False)
+            envelopes.append(ReportEnvelope.from_fairness(a, r))
+            risk_v = a.overall_risk.value
+            panel_status["⚖️ Bias"] = (
+                risk_v,
+                "ok" if risk_v in ("NIEDRIG", "LOW") else "critical",
             )
-        else:
-            df = mon_upload
-        r = a.run(df, verbose=False)
-        envelopes.append(ReportEnvelope.from_monitoring(a, r))
-        compliant = a.is_article_15_compliant(r)
-        panel_status["📈 Monitoring"] = (
-            f"{r.overall_metrics.accuracy:.1%}",
-            "ok" if compliant else "critical",
+
+        # --- 3. Explainability
+        if inc_exp:
+            from wavetest_explain.core.assessment import AssessmentConfig
+            from wavetest_explain.data.demo import generate_demo_model
+            from wavetest_report import ReportEnvelope
+            cfg = AssessmentConfig(
+                n_explanation_samples=int(exp_n_explanations),
+            )
+            a = make_explain_assessment(project.project_id, config=cfg)
+
+            if (use_project_inputs
+                    and _pi_sklearn_model_ready
+                    and _pi_dataset_ready):
+                _bump("Running Explainability (project model + SHAP)…")
+                import pickle as _pickle
+                import pandas as _pd
+                model = _pickle.loads(
+                    load_input(project, "sklearn_model").read_bytes(),
+                )
+                _pi_test_df = _pd.read_csv(load_input(project, "dataset"))
+                if "y_true" not in _pi_test_df.columns:
+                    st.error(
+                        "Combined / Explainability: project `dataset` "
+                        "needs a `y_true` target column."
+                    )
+                    st.stop()
+                feature_names = [c for c in _pi_test_df.columns if c != "y_true"]
+                X_test = _pi_test_df[feature_names].to_numpy()
+                y_test = _pi_test_df["y_true"].to_numpy()
+                _pi_train = load_input(project, "dataset_train")
+                if _pi_train is not None:
+                    _pi_train_df = _pd.read_csv(_pi_train)
+                    X_train = _pi_train_df[feature_names].to_numpy()
+                else:
+                    X_train = None
+            elif exp_src == "Demo model (synthetic)":
+                _bump("Running Explainability (training demo model + SHAP)…")
+                bundle = generate_demo_model(
+                    n_samples=int(exp_n_demo), n_features=int(exp_n_features),
+                )
+                model = bundle.model
+                X_test = bundle.X_test
+                y_test = bundle.y_test
+                feature_names = bundle.feature_names
+                X_train = bundle.X_train
+            else:
+                _bump("Running Explainability (uploaded model + SHAP)…")
+                feature_names = [
+                    c for c in exp_test_df.columns if c != exp_target_col
+                ]
+                X_test = exp_test_df[feature_names].to_numpy()
+                y_test = exp_test_df[exp_target_col].to_numpy()
+                model = exp_model
+                if exp_train_df is not None:
+                    train_missing = [
+                        c for c in feature_names + [exp_target_col]
+                        if c not in exp_train_df.columns
+                    ]
+                    if train_missing:
+                        st.error(
+                            f"Explainability: training CSV is missing columns: {train_missing}"
+                        )
+                        st.stop()
+                    X_train = exp_train_df[feature_names].to_numpy()
+                else:
+                    X_train = None
+
+            X_test = np.asarray(X_test)
+            y_test = np.asarray(y_test)
+            if X_train is not None:
+                X_train = np.asarray(X_train)
+
+            r = a.run(
+                model, X_test, y_test,
+                feature_names, X_train, verbose=False,
+            )
+            envelopes.append(ReportEnvelope.from_explainability(a, r))
+            panel_status["🔍 Explain"] = (
+                f"{r.accuracy:.1%}",
+                "ok" if r.accuracy >= 0.85 else "warning",
+            )
+
+        # --- 4. Logging
+        if inc_lg:
+            _bump("Running Logging assessment…")
+            from wavetest_logging import CurrentLoggingState, SystemProfile
+            from wavetest_report import ReportEnvelope
+            a = make_logging_assessment(
+                project.project_id,
+                current_logging=CurrentLoggingState(
+                    has_logging=lg_has,
+                    logs_inputs=lg_in,
+                    logs_outputs=lg_out,
+                    logs_timestamps=lg_ts,
+                    structured_format=lg_struct,
+                    retention_period_days=int(lg_retention),
+                ),
+                system_profile=SystemProfile(
+                    contains_personal_data=lg_personal,
+                    high_risk_classification=lg_high_risk,
+                ),
+            )
+            r = a.run(verbose=False)
+            envelopes.append(ReportEnvelope.from_logging(a, r))
+            panel_status["📝 Logging"] = (
+                f"{r.summary['compliance_percent']}%",
+                "ok" if r.article_12_compliant else "warning",
+            )
+
+        # --- 5. Monitoring
+        if inc_mon:
+            _bump("Running Monitoring…")
+            from wavetest_monitoring import generate_demo_monitoring_data
+            from wavetest_report import ReportEnvelope
+            a = make_monitoring_assessment(project.project_id)
+            if use_project_inputs and _pi_dataset_ready:
+                import pandas as _pd
+                df = _pd.read_csv(
+                    load_input(project, "dataset"),
+                    parse_dates=["timestamp"] if "timestamp" else None,
+                )
+                missing = [c for c in ("timestamp", "y_true", "y_pred")
+                           if c not in df.columns]
+                if missing:
+                    st.error(
+                        f"Combined / Monitoring: project `dataset` missing "
+                        f"required columns: {missing}"
+                    )
+                    st.stop()
+            elif mon_src == "Demo data (synthetic)":
+                df = generate_demo_monitoring_data(
+                    n_samples=int(mon_n), drift_level=mon_drift,
+                )
+            else:
+                df = mon_upload
+            r = a.run(df, verbose=False)
+            envelopes.append(ReportEnvelope.from_monitoring(a, r))
+            compliant = a.is_article_15_compliant(r)
+            panel_status["📈 Monitoring"] = (
+                f"{r.overall_metrics.accuracy:.1%}",
+                "ok" if compliant else "critical",
+            )
+
+        # --- Combine + render
+        progress.progress((selected) / (selected + 1), text="Combining envelopes + rendering PDF…")
+        from wavetest_report import ReportEnvelope, HTMLRenderer, JSONRenderer
+        combined = ReportEnvelope.combined(*envelopes)
+
+        artifacts = project_artifacts_dir(
+            project.client.client_id, project.client.company_name,
+            project.project_id, project.project_name,
+        )
+        ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+        safe_client = project.client.company_name.replace(" ", "_")
+        base_name = f"combined_report_{safe_client}_{project.project_id}_{ts}"
+
+        pdf_path  = artifacts / "reports" / f"{base_name}.pdf"
+        html_path = artifacts / "reports" / f"{base_name}.html"
+        json_path = artifacts / "reports" / f"{base_name}.json"
+
+        # JSON
+        JSONRenderer().render(combined, output_path=json_path)
+        # HTML (will render envelope sections that have templates; the rest emit
+        # comments — fine as a preview)
+        HTMLRenderer(language=project.client.languages[0] if project.client.languages else "de") \
+            .render(combined, output_path=html_path)
+
+        # PDF — branded cover (one page) + app-side executive summary body.
+        # The toolchain's reportlab fallback was producing a verbose dump
+        # that wasn't customer-deliverable; the body renderer here uses the
+        # same envelope but renders an opinionated 1-3 page summary via
+        # reportlab's Platypus API. Detailed per-module data still lives in
+        # the JSON envelope download.
+        body_pdf  = pdf_path.with_name(f"{base_name}__body.pdf")
+        cover_pdf = pdf_path.with_name(f"{base_name}__cover.pdf")
+        render_body(
+            combined, body_pdf,
+            project_label=f"{project.client.company_name} / {project.project_name}",
+            panel_status=panel_status,
+        )
+        render_cover(
+            cover_pdf,
+            project_id=project.project_id,
+            project_name=project.project_name,
+            client_name=project.client.company_name,
+            modules_included=list(panel_status.keys()),
+        )
+        writer = PdfWriter()
+        writer.append(str(cover_pdf))
+        writer.append(str(body_pdf))
+        with pdf_path.open("wb") as f:
+            writer.write(f)
+        writer.close()
+        body_pdf.unlink(missing_ok=True)
+        cover_pdf.unlink(missing_ok=True)
+
+        progress.progress(1.0, text="Done.")
+
+        # Roll up to a single audit-log entry for the combined run. Worst per-
+        # module colour wins so the viewer can flag risky combined runs at a glance.
+        _color_rank = {"ok": 0, "info": 1, "warning": 2, "critical": 3}
+        worst_color = "ok"
+        for _, c in panel_status.values():
+            if _color_rank.get(c, 0) > _color_rank.get(worst_color, 0):
+                worst_color = c
+        record_run(
+            project=project, module="combined",
+            status=combined.summary.overall_status, status_color=worst_color,
+            status_detail=f"Modules: {', '.join(panel_status.keys())}",
+            duration_seconds=time.perf_counter() - _t0,
         )
 
-    # --- Combine + render
-    progress.progress((selected) / (selected + 1), text="Combining envelopes + rendering PDF…")
-    from wavetest_report import ReportEnvelope, HTMLRenderer, JSONRenderer
-    combined = ReportEnvelope.combined(*envelopes)
-
-    artifacts = project_artifacts_dir(
-        project.client.client_id, project.client.company_name,
-        project.project_id, project.project_name,
-    )
-    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    safe_client = project.client.company_name.replace(" ", "_")
-    base_name = f"combined_report_{safe_client}_{project.project_id}_{ts}"
-
-    pdf_path  = artifacts / "reports" / f"{base_name}.pdf"
-    html_path = artifacts / "reports" / f"{base_name}.html"
-    json_path = artifacts / "reports" / f"{base_name}.json"
-
-    # JSON
-    JSONRenderer().render(combined, output_path=json_path)
-    # HTML (will render envelope sections that have templates; the rest emit
-    # comments — fine as a preview)
-    HTMLRenderer(language=project.client.languages[0] if project.client.languages else "de") \
-        .render(combined, output_path=html_path)
-
-    # PDF — branded cover (one page) + app-side executive summary body.
-    # The toolchain's reportlab fallback was producing a verbose dump
-    # that wasn't customer-deliverable; the body renderer here uses the
-    # same envelope but renders an opinionated 1-3 page summary via
-    # reportlab's Platypus API. Detailed per-module data still lives in
-    # the JSON envelope download.
-    body_pdf  = pdf_path.with_name(f"{base_name}__body.pdf")
-    cover_pdf = pdf_path.with_name(f"{base_name}__cover.pdf")
-    render_body(
-        combined, body_pdf,
-        project_label=f"{project.client.company_name} / {project.project_name}",
-        panel_status=panel_status,
-    )
-    render_cover(
-        cover_pdf,
-        project_id=project.project_id,
-        project_name=project.project_name,
-        client_name=project.client.company_name,
-        modules_included=list(panel_status.keys()),
-    )
-    writer = PdfWriter()
-    writer.append(str(cover_pdf))
-    writer.append(str(body_pdf))
-    with pdf_path.open("wb") as f:
-        writer.write(f)
-    writer.close()
-    body_pdf.unlink(missing_ok=True)
-    cover_pdf.unlink(missing_ok=True)
-
-    progress.progress(1.0, text="Done.")
-
-    # Roll up to a single audit-log entry for the combined run. Worst per-
-    # module colour wins so the viewer can flag risky combined runs at a glance.
-    _color_rank = {"ok": 0, "info": 1, "warning": 2, "critical": 3}
-    worst_color = "ok"
-    for _, c in panel_status.values():
-        if _color_rank.get(c, 0) > _color_rank.get(worst_color, 0):
-            worst_color = c
-    record_run(
-        project=project, module="combined",
-        status=combined.summary.overall_status, status_color=worst_color,
-        status_detail=f"Modules: {', '.join(panel_status.keys())}",
-        duration_seconds=time.perf_counter() - _t0,
-    )
-
-    st.session_state["cb_combined"]      = combined
-    st.session_state["cb_panel_status"]  = panel_status
-    st.session_state["cb_pdf_path"]      = pdf_path
-    st.session_state["cb_html_path"]     = html_path
-    st.session_state["cb_json_path"]     = json_path
+        st.session_state["cb_combined"]      = combined
+        st.session_state["cb_panel_status"]  = panel_status
+        st.session_state["cb_pdf_path"]      = pdf_path
+        st.session_state["cb_html_path"]     = html_path
+        st.session_state["cb_json_path"]     = json_path
 
 # ---------------------------------------------------------------------------
 # Results
