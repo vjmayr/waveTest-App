@@ -1,0 +1,12 @@
+# Copy to /etc/wavetest-app/rclone.conf on the server and `chmod 600`.
+# rclone copies auth/users.yaml to the same bucket as the SQLite replica so
+# disaster recovery can restore both halves of state. We use rclone instead
+# of awscli/s5cmd just to keep the on-box toolchain small.
+
+[hetzner]
+type = s3
+provider = Other
+endpoint = https://fsn1.your-objectstorage.com
+region = fsn1
+access_key_id = ...
+secret_access_key = ...

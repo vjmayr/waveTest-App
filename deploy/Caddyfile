@@ -1,0 +1,34 @@
+{
+    # Set a contact address so Let's Encrypt can reach us if a cert is about to expire.
+    email ops@waveimpact.de
+}
+
+wavetest.waveimpact.de {
+    encode gzip zstd
+
+    # Streamlit listens on localhost only — Caddy is the public endpoint.
+    # WebSocket pass-through works out of the box with reverse_proxy.
+    reverse_proxy 127.0.0.1:8501
+
+    # Security headers. HSTS is the important one — once a client has visited
+    # over HTTPS, the browser refuses HTTP for two years.
+    header {
+        Strict-Transport-Security "max-age=63072000; includeSubDomains; preload"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        -Server
+    }
+
+    # CSV / model uploads can be large; raise the default 10 MiB ceiling.
+    request_body {
+        max_size 200MB
+    }
+
+    log {
+        output file /var/log/caddy/wavetest.log {
+            roll_size 50MiB
+            roll_keep 10
+        }
+        format console
+    }
+}

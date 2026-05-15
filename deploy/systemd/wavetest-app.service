@@ -1,0 +1,29 @@
+[Unit]
+Description=waveTest Streamlit app
+After=network.target litestream.service
+Wants=litestream.service
+
+[Service]
+Type=simple
+User=wavetest
+Group=wavetest
+WorkingDirectory=/opt/wavetest-app
+ExecStart=/opt/wavetest-app/.venv/bin/streamlit run Home.py \
+    --server.address 127.0.0.1 \
+    --server.port 8501 \
+    --server.headless true \
+    --server.fileWatcherType none \
+    --browser.gatherUsageStats false \
+    --logger.level warning
+Restart=always
+RestartSec=5
+
+# Hardening — Streamlit only needs to read code and write to data/ + artifacts/
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/wavetest-app/data /opt/wavetest-app/artifacts /opt/wavetest-app/auth
+
+[Install]
+WantedBy=multi-user.target

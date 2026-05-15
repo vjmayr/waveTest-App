@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily backup of auth/users.yaml to Object Storage
+Documentation=DEPLOYMENT.md
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+RandomizedDelaySec=15min
+
+[Install]
+WantedBy=timers.target

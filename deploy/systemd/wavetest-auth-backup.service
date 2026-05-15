@@ -1,0 +1,17 @@
+[Unit]
+Description=Back up auth/users.yaml to Hetzner Object Storage
+Documentation=DEPLOYMENT.md
+After=network.target
+
+[Service]
+Type=oneshot
+User=wavetest
+Group=wavetest
+EnvironmentFile=/etc/wavetest-app/litestream.env
+WorkingDirectory=/opt/wavetest-app
+# Tag with a UTC timestamp so we keep dated history rather than overwriting.
+# The bucket has a 90-day lifecycle policy (see DEPLOYMENT.md) to age these out.
+ExecStart=/bin/bash -c 'STAMP=$$(date -u +%%Y%%m%%dT%%H%%M%%SZ); \
+    /usr/local/bin/rclone copyto auth/users.yaml \
+        hetzner:wavetest-app-backups/auth/users.$${STAMP}.yaml \
+    --config /etc/wavetest-app/rclone.conf'

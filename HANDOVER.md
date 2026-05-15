@@ -154,41 +154,27 @@ c8c5ae9  initial commit: skeleton + JSON import + Data Quality page
 
 ## Open follow-ups (priority order)
 
-> **Alibi Detect — Python 3.13 incompatible (deferred).** The library
-> pins `numba<...3.13` so `pip install alibi-detect` fails on the dev
-> environment. Equivalent functionality (KSDrift, MMDDrift, Isolation
-> Forest outliers) lives in `wavetest_monitoring` already via scipy.
-> Wait for an alibi-detect release that lifts the pin, or implement
-> the missing pieces (e.g. multivariate MMD test) ourselves.
+> **Alibi Detect — Python 3.13 incompatible (deferred, tracking-only).**
+> The library pins `numba<...3.13` so `pip install alibi-detect` fails on
+> the dev environment. Equivalent functionality (KSDrift, MMDDrift,
+> Isolation Forest outliers) already lives in `wavetest_monitoring` via
+> scipy, so the gap is cosmetic. No code action — revisit when upstream
+> lifts the pin.
 
-> **`next_id` second-order race.** A Python lock now serialises the
-> read+compute inside `next_id()` (good defense-in-depth) but each
-> caller's SQLAlchemy session establishes its read snapshot **before**
-> the lock fires, so two concurrent submissions can still both see the
-> same max and collide on commit. Proper fix: an ``id_sequences`` table
-> with atomic ``INSERT … ON CONFLICT … RETURNING``. ~1 hour. Until then
-> the user sees an `IntegrityError` if they're unlucky and just retries.
->
-> **Combined Report audit-failure gap.** The 5 individual assessment pages
-> wrap their run block in `audit_assessment(...)` so a mid-run exception
-> writes a `status="FAILED"` audit entry. The Combined Report does not —
-> wrapping its ~220-line orchestration via re-indent was rejected as too
-> invasive for the value. If Combined throws mid-pipeline you'll see the
-> Streamlit error but no audit row. Acceptable today; a small refactor
-> (extract `_run_combined()` helper, call inside `audit_assessment`)
-> would close the gap when convenient.
-
-
-1. **Production deployment + Litestream** — the localhost-only auth is in
-   place; what's outstanding is choosing a deploy target (internal Linux
-   box / Docker), wiring the reverse proxy, and adding Litestream for
-   continuous SQLite backups. Was bundled with the auth task in the
-   original list; deferred to a separate task once a target is chosen.
-2. **OIDC SSO option** — current auth is in-app username/password from
-   `auth/users.yaml`. If SSO is later required, swap `wavetest_app.auth`
-   for header-based identity from an oauth2-proxy and have it write
-   `st.session_state["username"]` from `X-Forwarded-User`. The rest of
-   the app already reads from session state.
+1. **Production deployment to Hetzner — in progress.** Target chosen
+   (Hetzner CPX21 in Falkenstein, domain `wavetest.waveimpact.de`).
+   Artefacts shipped: [deploy/Caddyfile](deploy/Caddyfile),
+   [deploy/systemd/](deploy/systemd/) units for Streamlit / Litestream /
+   the daily `auth/users.yaml` backup, [deploy/litestream.yml](deploy/litestream.yml)
+   replicating to Hetzner Object Storage, [scripts/setup_server.sh](scripts/setup_server.sh)
+   for first-time provisioning, and the full runbook in
+   [DEPLOYMENT.md](DEPLOYMENT.md). Remaining: provision the box, point
+   DNS, fill in Object Storage credentials, run the script.
+2. **OIDC SSO — deferred indefinitely.** With 1–3 analysts the YAML +
+   bcrypt path stays the production design. The swap point is documented
+   if/when SSO is needed: front the app with oauth2-proxy and have
+   `wavetest_app.auth` read `X-Forwarded-User` from the proxy instead of
+   running its own login form.
 
 ### Recently closed
 

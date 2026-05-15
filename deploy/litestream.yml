@@ -1,0 +1,20 @@
+# Litestream config — streams the SQLite write-ahead log to Hetzner Object
+# Storage (S3-compatible) every second. A crash of the box loses at most one
+# second of writes. See DEPLOYMENT.md for the restore procedure.
+#
+# Credentials and bucket name come from /etc/wavetest-app/litestream.env so
+# this file is safe to commit.
+
+dbs:
+  - path: /opt/wavetest-app/data/wavetest_app.db
+    replicas:
+      - type: s3
+        bucket: ${LITESTREAM_BUCKET}
+        path: wavetest_app
+        endpoint: ${LITESTREAM_ENDPOINT}
+        region: ${LITESTREAM_REGION}
+        access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+        secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+        # Keep 30 days of point-in-time snapshots; older ones age out.
+        retention: 720h
+        sync-interval: 1s

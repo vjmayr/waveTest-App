@@ -1,0 +1,23 @@
+[Unit]
+Description=Litestream — streaming SQLite replication
+Documentation=https://litestream.io
+After=network.target
+Before=wavetest-app.service
+
+[Service]
+Type=simple
+User=wavetest
+Group=wavetest
+EnvironmentFile=/etc/wavetest-app/litestream.env
+ExecStart=/usr/local/bin/litestream replicate -config /etc/wavetest-app/litestream.yml
+Restart=always
+RestartSec=5
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/opt/wavetest-app/data
+
+[Install]
+WantedBy=multi-user.target
