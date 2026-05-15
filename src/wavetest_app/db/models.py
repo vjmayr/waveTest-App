@@ -707,3 +707,31 @@ class ProjectInput(Base):
             f"<ProjectInput {self.input_id} {self.project_id}/{self.slot} "
             f"[{kind}] {self.size_bytes}b>"
         )
+
+
+# ---------------------------------------------------------------------------
+# ID sequences — atomic per-prefix counters (replaces the racy read-then-
+# allocate in wavetest_app.db.ids.next_id)
+# ---------------------------------------------------------------------------
+class IdSequence(Base):
+    """One row per ID prefix, incremented atomically by ``next_id``.
+
+    The original ``next_id`` implementation queried ``MAX(suffix) + 1`` over
+    the target table — a read-then-allocate pattern that races under
+    concurrent submissions: two callers can both observe the same max and
+    write the same primary key, with the second insert dying on the UNIQUE
+    constraint. This table replaces that with a single atomic statement
+    (``INSERT … ON CONFLICT … RETURNING`` on SQLite ≥ 3.35 / Postgres).
+
+    Seeded from the existing tables' max suffixes by the Alembic migration
+    that creates it, so the first allocation after upgrade is contiguous
+    with whatever IDs already exist.
+    """
+
+    __tablename__ = "id_sequences"
+
+    prefix: Mapped[str] = mapped_column(String(8), primary_key=True)
+    next_value: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    def __repr__(self) -> str:
+        return f"<IdSequence {self.prefix}={self.next_value}>"

@@ -14,48 +14,90 @@ from wavetest_app.db.session import get_session
 # next_id
 # ---------------------------------------------------------------------------
 class TestNextId:
-    def test_first_id_in_empty_table(self, in_memory_db):
+    """``next_id`` now allocates from a per-prefix counter row in
+    ``id_sequences`` via an atomic UPSERT-and-RETURN. Semantics changed
+    from "MAX(suffix)+1 over the target table" to "increment the counter":
+
+    * Monotonic — deleting a row does NOT make its ID available again.
+    * Independent of the target table — the counter increments even if
+      the caller never actually inserts using the returned ID.
+    * Race-safe across processes — the DB serialises the UPSERT.
+
+    These three invariants are what the tests below pin.
+    """
+
+    def test_first_call_returns_one(self, in_memory_db):
         with get_session() as db:
             assert next_id(db, Client.client_id, "CLI") == "CLI0001"
 
-    def test_increments_after_insert(self, in_memory_db):
+    def test_consecutive_calls_increment(self, in_memory_db):
         with get_session() as db:
-            db.add(Client(client_id="CLI0001", company_name="A"))
+            assert next_id(db, Client.client_id, "CLI") == "CLI0001"
+            assert next_id(db, Client.client_id, "CLI") == "CLI0002"
+            assert next_id(db, Client.client_id, "CLI") == "CLI0003"
+
+    def test_each_prefix_has_its_own_counter(self, in_memory_db):
         with get_session() as db:
+            assert next_id(db, Client.client_id,    "CLI") == "CLI0001"
+            assert next_id(db, System.system_id,    "SYS") == "SYS0001"
+            assert next_id(db, Project.project_id,  "PRJ") == "PRJ0001"
+            assert next_id(db, ProjectType.type_id, "PT")  == "PT0001"
+            # Counters are independent — calling CLI again jumps past 0001
             assert next_id(db, Client.client_id, "CLI") == "CLI0002"
 
-    def test_skips_to_max_plus_one_after_delete(self, in_memory_db):
-        with get_session() as db:
-            db.add(Client(client_id="CLI0001", company_name="A"))
-            db.add(Client(client_id="CLI0002", company_name="B"))
-            db.add(Client(client_id="CLI0003", company_name="C"))
-        with get_session() as db:
-            db.delete(db.get(Client, "CLI0002"))
-        with get_session() as db:
-            # Buggy "count + 1" would return CLI0003 (collision); correct is CLI0004
-            assert next_id(db, Client.client_id, "CLI") == "CLI0004"
+    def test_counter_is_monotonic_across_delete(self, in_memory_db):
+        """ID is never reused, even if the row holding it goes away.
 
-    def test_ignores_non_numeric_suffixes(self, in_memory_db):
+        This is the *desired* behaviour with a sequence table: deleted
+        IDs stay burned. Audit traces that reference an old `CLI0003`
+        always point at the same logical record.
+        """
         with get_session() as db:
-            db.add(Client(client_id="CLI0005", company_name="A"))
-            db.add(Client(client_id="CLIabc",  company_name="B"))  # garbage
+            cid1 = next_id(db, Client.client_id, "CLI")
+            db.add(Client(client_id=cid1, company_name="A"))
+            cid2 = next_id(db, Client.client_id, "CLI")
+            db.add(Client(client_id=cid2, company_name="B"))
         with get_session() as db:
-            assert next_id(db, Client.client_id, "CLI") == "CLI0006"
+            db.delete(db.get(Client, cid2))
+        with get_session() as db:
+            cid3 = next_id(db, Client.client_id, "CLI")
+            # Counter is at 3 even though the table only has CLI0001
+            assert cid3 == "CLI0003"
 
-    def test_works_for_each_table(self, in_memory_db):
-        with get_session() as db:
-            assert next_id(db, Client.client_id,        "CLI") == "CLI0001"
-            assert next_id(db, System.system_id,        "SYS") == "SYS0001"
-            assert next_id(db, Project.project_id,      "PRJ") == "PRJ0001"
-            assert next_id(db, ProjectType.type_id,     "PT")  == "PT0001"
+    def test_concurrent_callers_get_unique_ids(self, tmp_path):
+        """20 threads each allocate an ID; every result must be unique.
 
-    # NOTE: a true concurrency test was attempted here and revealed a
-    # second-order race the Python lock can't fix on its own — each
-    # thread's SQLAlchemy session establishes its read snapshot before
-    # the lock is taken, so two threads can read the same max even
-    # though only one is inside next_id() at a time. The full fix is a
-    # DB-side id_sequences table with atomic UPSERT … RETURNING. Tracked
-    # as a follow-up in HANDOVER.
+        Uses a file-backed SQLite DB so each thread gets its own
+        connection. With the old read-then-allocate scheme this test
+        failed (`IntegrityError` on the second insert). With the atomic
+        UPSERT, every caller observes its own monotonic value.
+        """
+        from concurrent.futures import ThreadPoolExecutor
+
+        from sqlalchemy import create_engine
+        from sqlalchemy.orm import sessionmaker
+
+        from wavetest_app.db.session import Base
+
+        db_path = tmp_path / "concurrency.db"
+        engine = create_engine(f"sqlite:///{db_path}", future=True)
+        Base.metadata.create_all(engine)
+        SessionLocal = sessionmaker(bind=engine, autoflush=False, future=True)
+
+        N = 20
+
+        def worker(_idx: int) -> str:
+            with SessionLocal() as db:
+                cid = next_id(db, Client.client_id, "CLI")
+                db.add(Client(client_id=cid, company_name=f"co_{_idx}"))
+                db.commit()
+                return cid
+
+        with ThreadPoolExecutor(max_workers=N) as ex:
+            ids = list(ex.map(worker, range(N)))
+
+        assert len(ids) == N
+        assert len(set(ids)) == N, f"duplicate IDs: {sorted(ids)}"
 
 
 # ---------------------------------------------------------------------------
