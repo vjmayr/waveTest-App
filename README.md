@@ -202,15 +202,19 @@ This touches _only_ the role list — no password re-entry needed.
 The authenticated username is automatically captured in the `audit_log.actor`
 column for every assessment run.
 
-## Multi-analyst deployment (planned)
+## Production deployment
 
-When deploying to a shared server:
+The shared analyst instance runs at `wavetest.waveimpact.de` on a Hetzner
+Cloud VM (Caddy reverse proxy + systemd-managed Streamlit + Litestream
+replicating SQLite to Hetzner Object Storage). All deployment artefacts
+live in [deploy/](deploy/) and [scripts/setup_server.sh](scripts/setup_server.sh);
+the operational runbook — first-time provisioning, code updates, user
+management, disaster recovery — is in [DEPLOYMENT.md](DEPLOYMENT.md).
 
-1. Move SQLite DB to a persistent volume; configure backups via [Litestream](https://litestream.io)
-2. Mount the `artifacts/` directory on a shared volume so all analysts see the same outputs
-3. Optionally swap the in-app auth for an OIDC reverse proxy (Caddy / nginx + oauth2-proxy) if SSO is required
-
-These are not in scope for the localhost-only scaffold but the architecture is designed for them.
+Auth stays as YAML + bcrypt for 1–3 analysts. If SSO becomes a
+requirement later, swap `wavetest_app.auth` for header-based identity
+from an oauth2-proxy fronting Caddy and have it write `X-Forwarded-User`
+into `st.session_state["username"]`.
 
 ---
 
